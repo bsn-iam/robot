@@ -1,6 +1,14 @@
-//#include <math.h>
-//#include <music.ino>
-const int Baud = 9600; //UART port speed
+#include <IRremote.h>
+#include <IRremoteInt.h>
+
+// To support more than 5 receivers, remember to change the define
+// IR_PARAMS_MAX in IRremoteInt.h as well.
+#define IRamount 2
+IRrecv *irrecvs[IRamount];
+decode_results results;
+
+const int Serial1Baud = 9600; //UART port speed
+const int SerialBaud = 19200; //UART port speed
 unsigned long loopStartTime;
 int timeLabelCurrent = 0;
 const float voltageDividerCoeff = 4.02;
@@ -14,7 +22,7 @@ const float arefCoeff = 0.919;
 float speedChosen;
 
 int stepDurationReal;
-const int stepDurationOrder = 333; // ms for step
+const int stepDurationOrder = 200; // ms for step
 const int timeBeforeBlowing = 1000;
 const int timeBackwardMoving = 400;
 const int timeRotatingMoving = 500;
@@ -23,17 +31,20 @@ float voltageAverage = 0;
 float rightSonarDistance = 0;
 float leftSonarDistance = 0;
 float currentBatteryVoltage = 0;
-bool wasCollision=0;
+bool wasCollision = 0;
 
-const int encoderSmoothingAmount = 5;
+const int encoderSmoothingTime = 1700;
+const int encoderSmoothingAmount = (int)encoderSmoothingTime/stepDurationOrder;
 int encoderLeftArray[encoderSmoothingAmount + 1];
 int encoderRightArray[encoderSmoothingAmount + 1];
 
-const int voltageSmoothingAmount = 10;
+const int voltageSmoothingTime = 3400;
+const int voltageSmoothingAmount = (int)voltageSmoothingTime/stepDurationOrder;
 float voltageArray[voltageSmoothingAmount + 1];    // the readings from the analog input
 
 float motorCurrentAverage = 0;
-const int motorCurrentSmoothingAmount = 7;
+const int motorCurrentSmoothingTime = 7;
+const int motorCurrentSmoothingAmount = (int)motorCurrentSmoothingTime/stepDurationOrder;
 float motorCurrentArray[motorCurrentSmoothingAmount + 1];    // the readings from the analog input
 
 
@@ -70,8 +81,12 @@ const int pinOwnPowerSwitch = 22;
 const int pinBlower = 14;
 
 const int pinBuzzer = 24;
-const int pinLeftIR = 99;
-//const int pinRightIR = 99;
+
+const int pinIR1 = 10;
+const int pinIR2 = 11;
+const int pinIR3 = 12;
+const int pinIR4 = 13;
+const int pinIR5 = 14;
 
 // Board	int.0	int.1	int.2	int.3	int.4	int.5
 // Mega2560	2		3		21		20		19		18
@@ -92,10 +107,8 @@ volatile long int encoderRightPosition = 0;
 volatile unsigned long monitorTimeRight = 0;
 bool motorPower = 0;
 
-const int turnRightTimeoutDefault = 400;
-int turnRightTimeout = turnRightTimeoutDefault;
-const int turnLeftTimeoutDefault = 300;
-int turnLeftTimeout = turnLeftTimeoutDefault;
+const int turnRightTimeout = 400;
+const int turnLeftTimeout = 300;
 
 int stuckState = 0;
 //int stuckedMovement=0;
@@ -119,23 +132,7 @@ int countDownWhileMovingToLeft;
 int mode = Spiral;
 
 
-char *songs[]={
-	"Indiana:d=4,o=5,b=250:e,8p,8f,8g,8p,1c6,8p.,d,8p,8e,1f,p.,g,8p,8a,8b,8p,1f6,p,a,8p,8b,2c6,2d6,2e6,e,8p,8f,8g,8p,1c6,p,d6,8p,8e6,1f.6,g,8p,8g,e.6,8p,d6,8p,8g,e.6,8p,d6,8p,8g,f.6,8p,e6,8p,8d6,2c6",
-	"Entertainer:d=4,o=5,b=140:8d,8d#,8e,c6,8e,c6,8e,2c.6,8c6,8d6,8d#6,8e6,8c6,8d6,e6,8b,d6,2c6,p,8d,8d#,8e,c6,8e,c6,8e,2c.6,8p,8a,8g,8f#,8a,8c6,e6,8d6,8c6,8a,2d6",
-	"Bond:d=4,o=5,b=80:32p,16c#6,32d#6,32d#6,16d#6,8d#6,16c#6,16c#6,16c#6,16c#6,32e6,32e6,16e6,8e6,16d#6,16d#6,16d#6,16c#6,32d#6,32d#6,16d#6,8d#6,16c#6,16c#6,16c#6,16c#6,32e6,32e6,16e6,8e6,16d#6,16d6,16c#6,16c#7,c.7,16g#6,16f#6,g#.6",
-	"StarWars:d=4,o=5,b=45:32p,32f#,32f#,32f#,8b.,8f#.6,32e6,32d#6,32c#6,8b.6,16f#.6,32e6,32d#6,32c#6,8b.6,16f#.6,32e6,32d#6,32e6,8c#.6,32f#,32f#,32f#,8b.,8f#.6,32e6,32d#6,32c#6,8b.6,16f#.6,32e6,32d#6,32c#6,8b.6,16f#.6,32e6,32d#6,32e6,8c#6",
-	"GoodBad:d=4,o=5,b=56:32p,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,d#,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,c#6,32a#,32d#6,32a#,32d#6,8a#.,16f#.,32f.,32d#.,c#,32a#,32d#6,32a#,32d#6,8a#.,16g#.,d#",
-	"MissionImp:d=16,o=6,b=95:32d,32d#,32d,32d#,32d,32d#,32d,32d#,32d,32d,32d#,32e,32f,32f#,32g,g,8p,g,8p,a#,p,c7,p,g,8p,g,8p,f,p,f#,p,g,8p,g,8p,a#,p,c7,p,g,8p,g,8p,f,p,f#,p,a#,g,2d,32p,a#,g,2c#,32p,a#,g,2c,a#5,8c,2p,32p,a#5,g5,2f#,32p,a#5,g5,2f,32p,a#5,g5,2e,d#,8d",
-	//"The Simpsons:d=4,o=5,b=160:c.6,e6,f#6,8a6,g.6,e6,c6,8a,8f#,8f#,8f#,2g,8p,8p,8f#,8f#,8f#,8g,a#.,8c6,8c6,8c6,c6",
-	//"Looney:d=4,o=5,b=140:32p,c6,8f6,8e6,8d6,8c6,a.,8c6,8f6,8e6,8d6,8d#6,e.6,8e6,8e6,8c6,8d6,8c6,8e6,8c6,8d6,8a,8c6,8g,8a#,8a,8f",
-	//"MASH:d=8,o=5,b=140:4a,4g,f#,g,p,f#,p,g,p,f#,p,2e.,p,f#,e,4f#,e,f#,p,e,p,4d.,p,f#,4e,d,e,p,d,p,e,p,d,p,2c#.,p,d,c#,4d,c#,d,p,e,p,4f#,p,a,p,4b,a,b,p,a,p,b,p,2a.,4p,a,b,a,4b,a,b,p,2a.,a,4f#,a,b,p,d6,p,4e.6,d6,b,p,a,p,2b",
-	//"TopGun:d=4,o=4,b=31:32p,16c#,16g#,16g#,32f#,32f,32f#,32f,16d#,16d#,32c#,32d#,16f,32d#,32f,16f#,32f,32c#,16f,d#,16c#,16g#,16g#,32f#,32f,32f#,32f,16d#,16d#,32c#,32d#,16f,32d#,32f,16f#,32f,32c#,g#",
-	//"A-Team:d=8,o=5,b=125:4d#6,a#,2d#6,16p,g#,4a#,4d#.,p,16g,16a#,d#6,a#,f6,2d#6,16p,c#.6,16c6,16a#,g#.,2a#",
-	//"Flinstones:d=4,o=5,b=40:32p,16f6,16a#,16a#6,32g6,16f6,16a#.,16f6,32d#6,32d6,32d6,32d#6,32f6,16a#,16c6,d6,16f6,16a#.,16a#6,32g6,16f6,16a#.,32f6,32f6,32d#6,32d6,32d6,32d#6,32f6,16a#,16c6,a#,16a6,16d.6,16a#6,32a6,32a6,32g6,32f#6,32a6,8g6,16g6,16c.6,32a6,32a6,32g6,32g6,32f6,32e6,32g6,8f6,16f6,16a#.,16a#6,32g6,16f6,16a#.,16f6,32d#6,32d6,32d6,32d#6,32f6,16a#,16c.6,32d6,32d#6,32f6,16a#,16c.6,32d6,32d#6,32f6,16a#6,16c7,8a#.6",
-	//"Jeopardy:d=4,o=6,b=125:c,f,c,f5,c,f,2c,c,f,c,f,a.,8g,8f,8e,8d,8c#,c,f,c,f5,c,f,2c,f.,8d,c,a#5,a5,g5,f5,p,d#,g#,d#,g#5,d#,g#,2d#,d#,g#,d#,g#,c.7,8a#,8g#,8g,8f,8e,d#,g#,d#,g#5,d#,g#,2d#,g#.,8f,d#,c#,c,p,a#5,p,g#.5,d#,g#",
-	//"MahnaMahna:d=16,o=6,b=125:c#,c.,b5,8a#.5,8f.,4g#,a#,g.,4d#,8p,c#,c.,b5,8a#.5,8f.,g#.,8a#.,4g,8p,c#,c.,b5,8a#.5,8f.,4g#,f,g.,8d#.,f,g.,8d#.,f,8g,8d#.,f,8g,d#,8c,a#5,8d#.,8d#.,4d#,8d#.",
-	//"KnightRider:d=4,o=5,b=125:16e,16p,16f,16e,16e,16p,16e,16e,16f,16e,16e,16e,16d#,16e,16e,16e,16e,16p,16f,16e,16e,16p,16f,16e,16f,16e,16e,16e,16d#,16e,16e,16e,16d,16p,16e,16d,16d,16p,16e,16d,16e,16d,16d,16d,16c,16d,16d,16d,16d,16p,16e,16d,16d,16p,16e,16d,16e,16d,16d,16d,16c,16d,16d,16d"
-};
+
 
 //enum modes { None, Joystick, Auto, Off, LowBattery};
 //modes mode=None;
@@ -155,8 +152,6 @@ void initPins() {
   pinMode(pinRightSonarEcho, INPUT);
   pinMode(pinRightSonarTrig, OUTPUT);
   pinMode(pinLed, OUTPUT);
-  pinMode(pinLeftIR, INPUT);
-  //pinMode(pinRightIR, INPUT);
 
   pinMode(pinRX0, INPUT);
   digitalWrite(pinRX0, HIGH);
@@ -187,8 +182,8 @@ void initPins() {
 }
 //Initialization
 void setup() {
-  Serial.begin(Baud);
-  Serial1.begin(Baud);
+  Serial.begin(SerialBaud);
+  Serial1.begin(Serial1Baud);
   //analogReference(EXTERNAL);
 
   initPins();
@@ -208,16 +203,16 @@ void setup() {
   for (int index = 1; index <= motorCurrentSmoothingAmount; index++)
     motorCurrentArray[index] = 0;
 
-  turnRightTimeout = turnRightTimeoutDefault / stepDurationOrder;
-  if (turnRightTimeout == 0)  turnRightTimeout = 1;
-  turnLeftTimeout = turnLeftTimeoutDefault / stepDurationOrder;
-  if (turnLeftTimeout == 0) turnLeftTimeout = 1;
+  irrecvs[0] = new IRrecv(pinIR1); // Receiver #0: pin 2
+  irrecvs[1] = new IRrecv(pinIR2); // Receiver #1: pin 3
+  // irrecvs[2] = new IRrecv(pinIR3); // Receiver #2: pin 4
+  // irrecvs[3] = new IRrecv(pinIR4); // Receiver #3: pin 5
+  // irrecvs[4] = new IRrecv(pinIR5); // Receiver #4: pin 6
 
- randomSeed(analogRead(0));
- int songNumber=random (0,6);
- //play_rtttl(songs[songNumber]); //uncomment to play a music
+  for (int i = 0; i < IRamount; i++)
+    irrecvs[i]->enableIRIn();
 
-	
+  //  playRandomSong();//uncomment to play a music
   getStartSound();
   delay(1000);
 }
@@ -230,11 +225,11 @@ void loop() {
 
   currentBatteryVoltage = getBatteryVoltage();
   checkBattery(currentBatteryVoltage);
-	setMode();
+  setMode();
   setBlowerState(currentBatteryVoltage);
-  //printTimeLabel(2);
+  speedChosen = getSpeed();
 
-  Serial1ActionSelect ();
+  BluetoothCheck();
 
   if (mode == Auto || mode == Spiral) {
     checkForStuck();
@@ -243,14 +238,20 @@ void loop() {
     }
   }
 
-  // checkIR();
-	
+  readIR();
+
+  forceMovementHandler();
+  if (stuckState) incrementAtTheEnd(stuckState);
+
 
   Serial.println(" ");
   encoderLeftPosition_prev = encoderLeftPosition;
   encoderRightPosition_prev = encoderRightPosition;
 
   stepDurationReal = millis() - loopStartTime;
+  Serial.print("Real loop duration: ");
+  Serial.println(stepDurationReal);
+
   if (stepDurationReal < stepDurationOrder) {
     delay(stepDurationOrder - stepDurationReal);
   }
@@ -259,12 +260,83 @@ void loop() {
   }
 }
 
-void setMode (){
-	if (mode == Spiral && wasCollision){
-		mode=Auto;
-	}
-return;	
+void setMode () {
+  if (mode == Spiral && wasCollision) {
+    mode = Auto;
+  }
+  return;
 }
+
+
+void readIR() {
+  for (int i = 0; i < IRamount; i++)
+  {
+    if (irrecvs[i]->decode(&results))
+    {
+		if(results.value == 0xE0E0E01F || results.value == 0x8F7708F ) {
+		// if(1 ) {
+			tone(pinBuzzer, 1900, 10);
+		  Serial.print("Receiver #");
+		  Serial.print(i);
+		  Serial.print(":");
+		  Serial.println(results.value, HEX);
+		  //Serial.println(results.value, DEC);
+		}
+      //IRinfo(&results);
+      irrecvs[i]->resume();
+    }
+  }
+  return;
+}
+
+
+void IRinfo(decode_results *results) {
+  // Dumps out the decode_results structure.
+  // Call this after IRrecv::decode()
+  int count = results->rawlen;
+  if (results->decode_type == UNKNOWN) {
+    Serial.print("Unknown encoding: ");
+  }
+  else if (results->decode_type == NEC) {
+    Serial.print("Decoded NEC: ");
+  }
+  else if (results->decode_type == SONY) {
+    Serial.print("Decoded SONY: ");
+  }
+  else if (results->decode_type == RC5) {
+    Serial.print("Decoded RC5: ");
+  }
+  else if (results->decode_type == RC6) {
+    Serial.print("Decoded RC6: ");
+  }
+  else if (results->decode_type == PANASONIC) {
+    Serial.print("Decoded PANASONIC - Address: ");
+    Serial.print(results->address, HEX);
+    Serial.print(" Value: ");
+  }
+  else if (results->decode_type == LG) {
+    Serial.print("Decoded LG: ");
+  }
+  else if (results->decode_type == JVC) {
+    Serial.print("Decoded JVC: ");
+  }
+  else if (results->decode_type == AIWA_RC_T501) {
+    Serial.print("Decoded AIWA RC T501: ");
+  }
+  else if (results->decode_type == WHYNTER) {
+    Serial.print("Decoded Whynter: ");
+  }
+  Serial.print(results->value, HEX);
+  Serial.print(" (");
+  Serial.print(results->bits, DEC);
+  Serial.println(" bits)");
+  Serial.print("Raw (");
+  Serial.print(count, DEC);
+  Serial.print("): ");
+
+  Serial.println();
+}
+
 
 void encoderMonitorLeft () {
   bool isDecreasing;
@@ -287,6 +359,7 @@ void encoderMonitorLeft () {
   return;
 }
 
+
 void encoderMonitorRight () {
   bool isDecreasing;
   bool valueB;
@@ -308,42 +381,57 @@ void encoderMonitorRight () {
   return;
 }
 
+
 void checkForStuck() {
   if ( encodersStuck(speedChosen) || stuckState ) {
     if (!stuckState) {
       stuckState = 1;
     }
-	Serial.print("stuckState: ");
-	Serial.println(stuckState);
-	int ss;
-	ss=0;
-	
-	ss++; backwardToRelease(ss); 
-    ss++; rotateToRelease(ss);
-	if ( stuckState == (ss+1) ) {
+    Serial.print("stuckState: ");
+    Serial.println(stuckState);
+
+    switch ( stuckState ) {
+      case 1:
+        startForceMovement(0, -1, timeBackwardMoving); break;	//backward
+      case 2:
+        startForceMovement(-1, 1, timeRotatingMoving); break;	//left
+      default:
+        Serial.println("Error! StuckState is outside the range."); break;
+    }
+
+    if ( stuckState == 3 ) {
       if ( !encodersStuck(speedChosen)) {
         Serial.println("Released. Continue the movement.");
         stuckState = 0;
-		return;
-      } 
+        return;
+      }
     }
-	ss++; waitToCheckRelease(ss);
-	ss++; rotateToRelease(ss);
-	ss++; backwardToRelease(ss); 
-	ss++; rotateToRelease(ss);
 
-	if ( stuckState == (ss+1) ) {
-	  if ( !encodersStuck(speedChosen)) {
-		Serial.println("Released. Continue the movement.");
-		stuckState = 0;
-	  } else {
-		Serial.println("Cannot release! Power off.");
-		goToSleep();
-	  }
-	}
+    switch ( stuckState ) {
+      case 3:
+        startForceMovement(0, 1, 600); break;	//forward
+      case 4:
+        startForceMovement(-1, 1, timeRotatingMoving); break;	//left
+      case 5:
+        startForceMovement(0, -1, timeBackwardMoving); break;	//backward
+      case 6:
+        startForceMovement(-1, 1, timeRotatingMoving); break;	//left
+      default:
+        Serial.println("Error! StuckState is outside the range."); break;
+    }
+
+    if ( stuckState == 7 ) {
+      if ( !encodersStuck(speedChosen)) {
+        Serial.println("Released. Continue the movement.");
+        stuckState = 0;
+      }
+      else {
+        Serial.println("Cannot release! Power off.");
+        goToSleep();
+      }
+    }
 
   }
-
   return;
 }
 
@@ -372,12 +460,12 @@ bool encodersStuck(float speedOrder) {
     encoderLeftAverage = encoderLeftSum / (encoderSmoothingAmount + 1);
     encoderRightAverage = encoderRightSum / (encoderSmoothingAmount + 1);
 
-	Serial.print ("encoderLeftPosition = ");
-	Serial.print  (encoderLeftPosition);
-	Serial.print (",  encoderRightPosition = ");
-	Serial.println (encoderRightPosition);
+    //Serial.print ("encoderLeftPosition = ");
+    //Serial.print  (encoderLeftPosition);
+    //Serial.print (",  encoderRightPosition = ");
+    //Serial.println (encoderRightPosition);
 
-	
+
     // Serial.print("encoderLeftAverage ");
     // Serial.print(encoderLeftAverage, 2);
     // Serial.print(",  encoderRightAverage ");
@@ -389,6 +477,17 @@ bool encodersStuck(float speedOrder) {
   return 0;
 }
 
+//smoothingAverageAbs(array, somoothingAmount, 1500);
+//float smoothingAverageAbs (float arr[], int arrayAmount, int time) {
+//  float arraySum=0;
+//  int requiredItems=min(arrayAmount, time/stepDurationOrder);
+
+//  for (int index = arrayAmount-requiredItems+1; index <= arrayAmount; index++) {
+//    arraySum = arraySum + abs(arr[index]);
+//  }
+//  return arraySum/(requiredItems+1);
+//}
+
 int encoderLeftLastStep () {
   return encoderLeftPosition_prev - encoderLeftPosition;
 }
@@ -398,82 +497,83 @@ int encoderRightLastStep () {
 }
 
 
-int countSleep = 0;
-int amountStepstoWait = 2;
+unsigned long forceMoveStartTime = 0;
+float courseOrderRelTime = 0;
+float speedOrderRelTime = 0;
+bool isForceMoveLastStep = 0;
+int durationTillLastStep = 0;
+int durationTillEnd = 0;
 
-void waitToCheckRelease(int releaseLevel) {
-  if (stuckState == releaseLevel) {
-    if (countSleep == 0) {
-      countSleep = amountStepstoWait;
-      processMovement();
-      Serial.print(countSleep);
-      Serial.println(". Attempt to release. Sleeping start.");
+void forceMovementHandler() {
+  isForceMoveLastStep = 0;
+
+  if ( isForceMovementActive() ) {
+    // All steps except last
+    if (isInTheRange(millis(), forceMoveStartTime, forceMoveStartTime + durationTillLastStep)) {
+      moveSmart(courseOrderRelTime, speedOrderRelTime);
+      forceMovementLogging();
     }
-    if (countSleep <= amountStepstoWait ) {
-      countSleep--;
-      processMovement();
-      Serial.print(countSleep);
-      Serial.println(". Attempt to release. Sleeping.");
+
+    //last step only
+    if (isInTheRange(millis(), forceMoveStartTime + durationTillLastStep, forceMoveStartTime + durationTillEnd)) {
+      moveSmart(courseOrderRelTime, speedOrderRelTime);
+      isForceMoveLastStep = 1;
+      stopForceMovement();
+      Serial.println("Last force movement step");
     }
-    if (countSleep <= 0) {
-      countSleep = 0;
-      stuckState = releaseLevel + 1;
-      Serial.print(countSleep);
-      Serial.println(". Attempt to release. Sleeping finished.");
+
+    //check for small step
+    if (durationTillLastStep < 0) {
+      moveSmart(courseOrderRelTime, speedOrderRelTime);
+      isForceMoveLastStep = 1;
+      stopForceMovement();
+
+      Serial.println("Movement time less then real step!");
+      tone(pinBuzzer, 1900, 10);
     }
   }
   return;
 }
 
-unsigned long timeBackwardStart = 0;
-void backwardToRelease(int releaseLevel) {
-	Serial.println(releaseLevel);
-  if (stuckState == releaseLevel) {
-    tone(pinBuzzer, 1600, 20);
-    if (timeBackwardStart == 0) {
-      timeBackwardStart = millis();
-      moveSmart(0, -HalfSpeed / 255);
-      //moveBackward(HalfSpeed);
-      Serial.println("Attempt to release. Backward.");
-    }
-    if (isInTheRange(timeBackwardMoving, 1, millis() - timeBackwardStart) ) {
-      //moveBackward(FullSpeed);
-      moveSmart(0, -1);
-      Serial.println("Attempt to release. Backward.");
-    }
-    if (millis() - timeBackwardStart > timeBackwardMoving) {
-      timeBackwardStart = 0;
-      stuckState = releaseLevel + 1;
-      Serial.println("Attempt to release. Backward finished.");
-    }
+void stopForceMovement() {
+  forceMoveStartTime = 0;
+  return;
+}
+
+void forceMovementLogging () {
+  Serial.print(millis() - forceMoveStartTime);
+  Serial.print("/");
+  Serial.print(durationTillEnd);
+  Serial.println(". Continue movement..");
+  return;
+}
+
+//starts if force movement is not active!
+void startForceMovement(float courseOrderRel, float speedOrderRel, int time) {
+  if (forceMoveStartTime == 0) {
+    forceMoveStartTime = millis();
+    courseOrderRelTime = courseOrderRel;
+    speedOrderRelTime = speedOrderRel;
+    durationTillLastStep = time - 3*stepDurationOrder / 2;
+    durationTillEnd = time - stepDurationOrder / 2;
   }
   return;
 }
 
-unsigned long timeRotatingStart = 0;
-void rotateToRelease(int releaseLevel) {
-  if (stuckState == releaseLevel) {
-    tone(pinBuzzer, 1900, 20);
-    if (timeRotatingStart == 0) {
-      timeRotatingStart = millis();
-      //moveRight(FullSpeed);
-      moveSmart(rotateRight, FullSpeed / 255);
-      Serial.println("Attempt to release. Rotating.");
-    }
-    if (isInTheRange(timeRotatingMoving, 1, millis() - timeRotatingStart) ) {
-      //moveRight(HalfSpeed);
-      moveSmart(rotateRight, HalfSpeed / 255);
-      Serial.println("Attempt to release. Rotating.");
-    }
-    if (millis() - timeRotatingStart > timeRotatingMoving) {
-      timeRotatingStart = 0;
-      stuckState = releaseLevel + 1;
-      Serial.println("Attempt to release. Rotating finished.");
-    }
+
+bool isForceMovementActive() {
+  if (forceMoveStartTime != 0) return 1;
+  return 0;
+}
+
+
+//incrementAtTheEnd(i);
+void incrementAtTheEnd(int &i) {
+  if (isForceMoveLastStep) {
+    i++;
   }
   return;
 }
-
 
 void printTimeLabel(int label) {
   Serial.print("Time label ");
@@ -483,23 +583,6 @@ void printTimeLabel(int label) {
   timeLabelCurrent = millis();
   return;
 }
-
-//void checkIR() {
-//  int LeftIRResult=analogRead(pinLeftIR);
-//  //int RightIRResult=digitalRead(pinRightIR);
-//  Serial.print("Left IR: ");
-//  Serial.println(LeftIRResult);
-//  //Serial.print(", Right IR: ");
-//  //Serial.println(RightIRResult);
-//  if (!LeftIRResult){
-//    tone(pinBuzzer, 2100, 5);
-//  }
-//  //if (!RightIRResult){
-//  //  tone(pinBuzzer, 1500, 5);
-//  //}
-//  return;
-//}
-
 
 float  getBatteryVoltage() {
   float voltageSum = 0;
@@ -536,10 +619,10 @@ float  getBatteryVoltage() {
 
 void setBlowerState(float currentVoltage) {
   if ( currentVoltage > blowingStartBatteryValue && !stuckState ) {
-     StartBlowing();
+    StartBlowing();
   }
   if ( currentVoltage < blowingStopBatteryValue || stuckState ) {
-	StopBlowing();
+    StopBlowing();
   }
   return;
 }
@@ -575,7 +658,7 @@ void lockPower() {
 
 void goToSleep() {
   StopBlowing();
-  tone(pinBuzzer, 1700, 3000);
+  //tone(pinBuzzer, 1700, 3000);
   digitalWrite(pinOwnPowerSwitch, 0);
   delay(1000);
   digitalWrite(pinOwnPowerSwitch, 1);
@@ -603,44 +686,37 @@ void StopBlowing() {
 
 void getStartSound() {
   const int DelaySound = 100;
-  tone(pinBuzzer, 1915);
-  delay(DelaySound);
-  tone(pinBuzzer, 1700);
-  delay(DelaySound);
-  tone(pinBuzzer, 1519);
-  delay(DelaySound);
-  tone(pinBuzzer, 1432);
-  delay(DelaySound);
-  tone(pinBuzzer, 1275);
-  delay(DelaySound);
-  tone(pinBuzzer, 1136);
-  delay(DelaySound);
-  tone(pinBuzzer, 1014);
-  delay(DelaySound);
+  tone(pinBuzzer, 1915);  delay(DelaySound);
+  tone(pinBuzzer, 1700);  delay(DelaySound);
+  tone(pinBuzzer, 1519);  delay(DelaySound);
+  tone(pinBuzzer, 1432);  delay(DelaySound);
+  tone(pinBuzzer, 1275);  delay(DelaySound);
+  tone(pinBuzzer, 1136);  delay(DelaySound);
+  tone(pinBuzzer, 1014);  delay(DelaySound);
   noTone(pinBuzzer);
 }
 
-const float spiralStep=0.005;
-const float spiralDirectionLimit=0.2;
+const float spiralStep = 0.005;
+const float spiralDirectionLimit = 0.2;
 
-float increment=spiralStep;
-float spiralDirectionOrder=spiralDirectionLimit;
+float increment = spiralStep;
+float spiralDirectionOrder = spiralDirectionLimit;
 
 float getDirection() {
-	if (mode == Spiral) {
-		if (spiralDirectionOrder >= abs(spiralDirectionLimit)){
-			increment=-abs(spiralStep);
-		}
-		if (spiralDirectionOrder < -abs(spiralDirectionLimit)){
-			//increment=abs(spiralStep);
-			mode=Auto;
-		}
-		spiralDirectionOrder=spiralDirectionOrder+increment;
-		Serial.print("                          spiralDirectionOrder=");
-		Serial.println(spiralDirectionOrder);
-		return spiralDirectionOrder;
-	}
-	return stright;
+  if (mode == Spiral) {
+    if (spiralDirectionOrder >= abs(spiralDirectionLimit)) {
+      increment = -abs(spiralStep);
+    }
+    if (spiralDirectionOrder < -abs(spiralDirectionLimit)) {
+      //increment=abs(spiralStep);
+      mode = Auto;
+    }
+    spiralDirectionOrder = spiralDirectionOrder + increment;
+    Serial.print("                          spiralDirectionOrder=");
+    Serial.println(spiralDirectionOrder);
+    return spiralDirectionOrder;
+  }
+  return stright;
 }
 
 int  getSpeed() {
@@ -678,54 +754,40 @@ boolean isInTheRange(float parameter, float minimum, float maximum) {
   return false;
 }
 
-// start movement if wheel is not moving backward
 void processMovement() {
-  float speedChosenRel;
-  if (isLeftSideCollision() && countDownWhileMovingToLeft <= 0 )
-    countDownWhileMovingToRight = turnRightTimeout;
-  if (isRightSideCollision() && countDownWhileMovingToRight <= 0 )
-    countDownWhileMovingToLeft = turnLeftTimeout;
-
-  speedChosen = getSpeed();
-  // Serial.print("speedChosen=");
-  // Serial.println(speedChosen);
-  speedChosenRel = speedChosen / 255.0;
-  if (countDownWhileMovingToRight <= 0 && countDownWhileMovingToLeft <= 0 ) {
-	  float direction=getDirection();
-    moveSmart(direction, speedChosenRel);
-    //moveForward(speedChosen);
-  }
-  if (countDownWhileMovingToRight > 0 && countDownWhileMovingToLeft <= 0 ) {
-    Serial.print(countDownWhileMovingToRight);
-    Serial.println(". Right side backward");
-    countDownWhileMovingToRight--;
-    moveSmart(rotateRight, speedChosenRel);
-    //moveRight(speedChosen);
+  if (isLeftSideCollision()) {
+    startForceMovement(1, 1, turnRightTimeout);
+    Serial.println("Right side backward");
+    return;
   }
 
-  if (countDownWhileMovingToLeft > 0 && countDownWhileMovingToRight <= 0 ) {
-    Serial.print(countDownWhileMovingToLeft);
-    Serial.println(". Left side backward");
-    countDownWhileMovingToLeft--;
-    moveSmart(rotateLeft, speedChosenRel);
-    //moveLeft(speedChosen);
+  if (isRightSideCollision()) {
+    startForceMovement(1, 1, turnLeftTimeout);
+    Serial.println("Left side backward");
+    return;
   }
+
+  if (!isForceMovementActive()) {
+    moveSmart(getDirection(), speedChosen / 255);
+  }
+  return;
 }
 
-boolean isRightSideCollision () {
+bool isRightSideCollision () {
   rightSonarDistance = checkTheDistance (pinRightSonarTrig, pinRightSonarEcho, "Right");
   if (checkTheCollision (rightSonarDistance, "Right") || isBumperPressed(pinRightBumper)) {
     Serial.println("Right side collision.");
-	wasCollision=1;
+    wasCollision = 1;
     return true;
   }
   return false;
 }
-boolean isLeftSideCollision () {
+
+bool isLeftSideCollision () {
   leftSonarDistance = checkTheDistance (pinLeftSonarTrig, pinLeftSonarEcho, "Left");
   if (checkTheCollision (leftSonarDistance, "Left") || isBumperPressed(pinLeftBumper)) {
     Serial.println("Left side collision.");
-	wasCollision=1;
+    wasCollision = 1;
     return true;
   }
   return false;
@@ -750,18 +812,8 @@ float checkTheDistance (int pinSonarTrig, int pinSonarEcho, char descr[ ]) {
 bool checkTheCollision (float distance, char descr[ ]) {
   if (distance <= distanceInCollision  && distance > 0 )
   {
-    //Serial.print(descr);
-    //Serial.print(" sonar: collision!   ");
-    //Serial.print(distance);
-    //Serial.println(" cm");
-
     return true;
   }
-
-  //Serial.print(descr);
-  //Serial.print(" sonar: distance: ");
-  //Serial.print(distance);
-  //Serial.println(" cm");
   return false;
 }
 
@@ -791,7 +843,7 @@ String readSerial1 ()
   return inputString;
 }
 
-bool Serial1ActionSelect ()
+bool BluetoothCheck ()
 {
   String input = readSerial1 ();
   if ( mode == Joystick )
@@ -799,28 +851,24 @@ bool Serial1ActionSelect ()
     if (input == "u")
     {
       moveSmart(0, 1);
-      //moveForward(FullSpeed);
       tone(pinBuzzer, 1700, 5);
       return true;
     }
     if ( input == "d")
     {
       moveSmart(0, -HalfSpeed / 255);
-      //moveBackward(HalfSpeed);
       tone(pinBuzzer, 1700, 5);
       return true;
     }
     if (input == "l")
     {
       moveSmart(-1, QuarterSpeed / 255);
-      //moveLeft(QuarterSpeed);
       tone(pinBuzzer, 1700, 5);
       return true;
     }
     if ( input == "r")
     {
       moveSmart(1, QuarterSpeed / 255);
-      //moveRight(QuarterSpeed);
       tone(pinBuzzer, 1700, 5);
       return true;
     }
@@ -872,19 +920,19 @@ float courseOrderRel_prev;
 float speedOrderRel_prev;
 int leftVelocityPure_prev;
 int rightVelocityPure_prev;
-  
+
 void moveSmart(float courseOrderRel, float speedOrderRel)
 {
   float leftVelocityPureRel;
   float rightVelocityPureRel;
   int leftVelocityPure;
-  int rightVelocityPure; 
-  
+  int rightVelocityPure;
+
   float courseDeviationReal = 1;
-  float courseDeviationOrder=1;
-  float courseCorrection=1;
-	float leftCorrection=1;
-	float rightCorrection=1;
+  float courseDeviationOrder = 1;
+  float courseCorrection = 1;
+  float leftCorrection = 1;
+  float rightCorrection = 1;
 
   rightVelocityPureRel = 1 - courseOrderRel; //[0;2]
   leftVelocityPureRel = 1 + courseOrderRel; //[0;2]
@@ -906,26 +954,27 @@ void moveSmart(float courseOrderRel, float speedOrderRel)
   // Serial.print(" , ");
   // Serial.print(rightVelocityPure);
   // Serial.println(")");
-  
+
+  //correct the direction
   if (courseOrderRel_prev == courseOrderRel && speedOrderRel_prev == speedOrderRel) {
     float stepLeft = encoderLeftLastStep();
     float stepRight = encoderRightLastStep();
 
     if (stepLeft != 0 && stepRight != 0) {
       courseDeviationReal = abs(stepLeft / stepRight); //(0;Inf)
-	  courseDeviationOrder= abs(leftVelocityPure_prev / rightVelocityPure_prev); //(0;Inf)
-	  courseCorrection=courseDeviationOrder/courseDeviationReal; //(0;Inf)
-	  
+      courseDeviationOrder = abs(leftVelocityPure_prev / rightVelocityPure_prev); //(0;Inf)
+      courseCorrection = courseDeviationOrder / courseDeviationReal; //(0;Inf)
+
       Serial.print("courseDeviationReal= ");
       Serial.print(courseDeviationReal);
       Serial.print(", courseDeviationOrder= ");
       Serial.print(courseDeviationOrder);
       Serial.print(", courseCorrection= ");
       Serial.println(courseCorrection);
-	  leftCorrection=min(courseCorrection, 255/leftVelocityPure); // v - [0; 255]
-	  rightCorrection=min(1/courseCorrection, 255/rightVelocityPure); // v - [0; 255]
-	  leftCorrection=max(leftCorrection, 0.7); // v - [0.7U; 255]
-	  rightCorrection=max(rightCorrection, 0.7);// v - [0.7U; 255]
+      leftCorrection = min(courseCorrection, 255 / leftVelocityPure); // v - [0; 255]
+      rightCorrection = min(1 / courseCorrection, 255 / rightVelocityPure); // v - [0; 255]
+      leftCorrection = max(leftCorrection, 0.6); // v - [0.7U; 255]
+      rightCorrection = max(rightCorrection, 0.6); // v - [0.7U; 255]
     }
   }
 
@@ -935,73 +984,25 @@ void moveSmart(float courseOrderRel, float speedOrderRel)
   // Serial.print(rightVelocityPure*rightCorrection);
   // Serial.println(")");
 
-  setLeftMotorOrder(leftVelocityPure*leftCorrection);
-  setRightMotorOrder(rightVelocityPure*rightCorrection);
-  
-  courseOrderRel_prev=courseOrderRel;
-  speedOrderRel_prev=speedOrderRel;
-  leftVelocityPure_prev=leftVelocityPure;
-  rightVelocityPure_prev=rightVelocityPure;
+  setLeftMotorOrder(leftVelocityPure * leftCorrection);
+  setRightMotorOrder(rightVelocityPure * rightCorrection);
+
+  courseOrderRel_prev = courseOrderRel;
+  speedOrderRel_prev = speedOrderRel;
+  leftVelocityPure_prev = leftVelocityPure;
+  rightVelocityPure_prev = rightVelocityPure;
   return;
 }
 
 
-//void moveForward(int velocity)
-//{
-//  setMotorsSpeed(velocity);
-//  runLeftMotorForward();
-//  runRightMotorForward();
-//}
-//void moveBackward(int velocity)
-//{
-//  setMotorsSpeed(velocity);
-//  runLeftMotorBackward();
-//  runRightMotorBackward();
-//}
-//void moveRight(int velocity)
-//{
-//  setMotorsSpeed(velocity);
-//  runLeftMotorForward();
-//  runRightMotorBackward();
-//}
-//void moveLeft(int velocity)
-//{
-//  setMotorsSpeed(velocity);
-//  runLeftMotorBackward();
-//  runRightMotorForward();
-//}
-
-//void setMotorsSpeed(int velocity) {
-//  setMotorSpeed(pinRightMotorSpeed, velocity);
-//  setMotorSpeed(pinLeftMotorSpeed, velocity);
-//}
-
 void stopMotors() {
   moveSmart(0, 0);
-  //setMotorSpeed(pinRightMotorSpeed, 0);
-  //setMotorSpeed(pinLeftMotorSpeed, 0);
 }
 
-boolean isBumperPressed(int pinBumper) {
+
+bool isBumperPressed(int pinBumper) {
   return !digitalRead(pinBumper);
 }
-
-//void runRightMotorForward() {
-//  runMotorForward(pinRightMotorDirection);
-//}
-//
-//void runLeftMotorForward() {
-//  runMotorForward(pinLeftMotorDirection);
-//}
-//
-//void runRightMotorBackward() {
-//  runMotorBackward(pinRightMotorDirection);
-//}
-//
-//void runLeftMotorBackward() {
-//  runMotorBackward(pinLeftMotorDirection);
-//}
-
 
 ////////////////////////////////////
 void setLeftMotorOrder(int velocity) {
@@ -1099,5 +1100,6 @@ void runMotorBackward(int pinMotorDirection) {
 //
 //  return motorCurrentAverage;
 //}
+
 
 
