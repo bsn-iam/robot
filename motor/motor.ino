@@ -3,7 +3,7 @@
 
 // To support more than 5 receivers, remember to change the define
 // IR_PARAMS_MAX in IRremoteInt.h as well.
-#define IRamount 2
+#define IRamount 0
 IRrecv *irrecvs[IRamount];
 decode_results results;
 
@@ -125,7 +125,8 @@ int stuckState = 0;
 #define Joystick 1
 #define Auto 2
 #define Spiral 3
-#define LowBattery 3
+#define Wall 4
+#define LowBattery 5
 int mode = Spiral;
 
 //enum modes { None, Joystick, Auto, Off, LowBattery};
@@ -220,12 +221,12 @@ void loop() {
   currentBatteryVoltage = getBatteryVoltage();
   checkBattery(currentBatteryVoltage);
   setMode();
-  setBlowerState(currentBatteryVoltage);
   speedChosen = getSpeed();
 
   BluetoothCheck();
 
   if (mode == Auto || mode == Spiral) {
+    setBlowerState(currentBatteryVoltage);
     checkForStuck();
     if (!stuckState) {
       processMovement();
@@ -501,6 +502,12 @@ int durationTillEnd = 0;
 void forceMovementHandler() {
   isForceMoveLastStep = 0;
 
+  // Serial.print("courseOrderRelTime=");
+  // Serial.println(courseOrderRelTime);
+  
+  // Serial.print("speedOrderRelTime=");
+  // Serial.println(speedOrderRelTime);
+  
   if ( isForceMovementActive() ) {
     // All steps except last
     if (isInTheRange(millis(), forceMoveStartTime, forceMoveStartTime + durationTillLastStep)) {
@@ -677,6 +684,10 @@ void StopBlowing() {
   digitalWrite(pinBlower, HIGH);
   return;
 }
+void ChangeBlowing() {
+  digitalWrite(pinBlower, !digitalRead(pinBlower));
+  return;
+}
 
 void getStartSound() {
   const int DelaySound = 100;
@@ -743,14 +754,25 @@ boolean isInTheRange(float parameter, float minimum, float maximum) {
 }
 
 void processMovement() {
+	
+   // Serial.print("Right bumper: ");
+   // Serial.println(isBumperPressed(pinRightBumper));
+   // Serial.print("Left bumper: ");
+   // Serial.println(isBumperPressed(pinLeftBumper));
+	
+   // Serial.print("Right sensor: ");
+   // Serial.println(isRightSideCollision());
+   // Serial.print("Left sensor: ");
+   // Serial.println(isLeftSideCollision());
+	
   if (isLeftSideCollision()) {
-    startForceMovement(rotateRight, FullSpeed, turnRightTimeout);
+    startForceMovement(rotateRight, FullSpeed/255, turnRightTimeout);
     Serial.println("Right side backward");
     return;
   }
 
   if (isRightSideCollision()) {
-    startForceMovement(rotateLeft, FullSpeed, turnLeftTimeout);
+    startForceMovement(rotateLeft, FullSpeed/255, turnLeftTimeout);
     Serial.println("Left side backward");
     return;
   }
@@ -791,8 +813,11 @@ float checkTheDistance (int pinSonarTrig, int pinSonarEcho, char descr[ ]) {
   int startTime;
   startTime = millis();
   duration = pulseIn(pinSonarEcho, HIGH, 50000);
-  int pulseDuration;
-  pulseDuration = millis() - startTime;
+  // Serial.print("Pulse duration: ");
+  // Serial.print(descr);
+  // Serial.println(duration);
+  // int pulseDuration;
+  // pulseDuration = millis() - startTime;
   cm = duration / 58;
   return cm;
 }
@@ -833,35 +858,33 @@ String readSerial1 ()
 
 bool BluetoothCheck ()
 {
-  String input = readSerial1 ();
+  String inputString = readSerial1 ();
+  char input=inputString[0];
   if ( mode == Joystick )
   {
-    if (input == "u")
-    {
-      moveSmart(0, 1);
-      tone(pinBuzzer, 1700, 5);
-      return true;
-    }
-    if ( input == "d")
-    {
-      moveSmart(0, -HalfSpeed / 255);
-      tone(pinBuzzer, 1700, 5);
-      return true;
-    }
-    if (input == "l")
-    {
-      moveSmart(-1, QuarterSpeed / 255);
-      tone(pinBuzzer, 1700, 5);
-      return true;
-    }
-    if ( input == "r")
-    {
-      moveSmart(1, QuarterSpeed / 255);
-      tone(pinBuzzer, 1700, 5);
-      return true;
+	switch ( input ) {
+    case 'u':
+	  moveSmart(0, 1); 
+	  tone(pinBuzzer, 1700, 5); break;
+	  
+    case 'd':
+	  moveSmart(0, -1); 
+	  tone(pinBuzzer, 1700, 5); break;
+	  
+    case 'l':
+	  moveSmart(-1, 1); 
+	  tone(pinBuzzer, 1700, 5); break;
+	  
+    case 'r':
+	  moveSmart(1, 1); 
+	  tone(pinBuzzer, 1700, 5); break;
+	    
+    case '\0':
+	  Serial.println("Stop");
+	  stopMotors(); break;
     }
   }
-  if ( input == "m")
+  if ( input == 'm')
   {
     Serial.println("Manual mode");
     tone(pinBuzzer, 1700, 5);
@@ -869,7 +892,7 @@ bool BluetoothCheck ()
     delay(1000);
     return true;
   }
-  if ( input == "a")
+  if ( input == 'a')
   {
     Serial.println("Auto mode");
     tone(pinBuzzer, 1700, 5);
@@ -878,7 +901,23 @@ bool BluetoothCheck ()
     return true;
   }
 
-  if ( input == "x")
+  if ( input == 'w')
+  {
+    Serial.println("Wall mode");
+    tone(pinBuzzer, 1700, 5);
+    delay(1000);
+    mode = Wall;
+    return true;
+  }
+  if ( input == 's')
+  {
+    Serial.println("Spiral mode");
+    tone(pinBuzzer, 1700, 5);
+    delay(1000);
+    mode = Spiral;
+    return true;
+  }
+  if ( input == 'x')
   {
     Serial.println("Stop all");
     tone(pinBuzzer, 1700, 5);
@@ -887,13 +926,22 @@ bool BluetoothCheck ()
     return true;
   }
 
-  if ( input == "")
+  if ( input == 'b')
   {
-    if ( mode == Joystick )
-    {
-      Serial.println("Stop");
-      stopMotors();
-    }
+    Serial.println("Blowing");
+    tone(pinBuzzer, 1700, 5);
+    ChangeBlowing();
+    delay(1000);
+    return true;
+  }
+
+  if ( input == 't') //turn
+  {
+    Serial.println("Spin");
+    tone(pinBuzzer, 1700, 5);
+    delay(1000);
+    //mode = None;
+    return true;
   }
   return false;
 }
@@ -911,6 +959,7 @@ int rightVelocityPure_prev;
 
 void moveSmart(float courseOrderRel, float speedOrderRel)
 {
+	
   float leftVelocityPureRel;
   float rightVelocityPureRel;
   int leftVelocityPure;
@@ -922,6 +971,8 @@ void moveSmart(float courseOrderRel, float speedOrderRel)
   float leftCorrection = 1;
   float rightCorrection = 1;
 
+  
+  
   rightVelocityPureRel = 1 - courseOrderRel; //[0;2]
   leftVelocityPureRel = 1 + courseOrderRel; //[0;2]
 
@@ -934,6 +985,13 @@ void moveSmart(float courseOrderRel, float speedOrderRel)
     rightVelocityPureRel = rightVelocityPureRel - leftVelocityPureRel + 1; //[-1;1]
     leftVelocityPureRel = 1;
   }
+  
+  
+  // Serial.print("leftVelocityPureRel=");
+  // Serial.println(leftVelocityPureRel);
+  
+  // Serial.print("rightVelocityPureRel=");
+  // Serial.println(rightVelocityPureRel);
   
   //rising speed for low orders. 
   leftVelocityPureRel=smoothLow(leftVelocityPureRel);
@@ -971,11 +1029,11 @@ void moveSmart(float courseOrderRel, float speedOrderRel)
     }
   }
 
-  // Serial.print("              Velocity = (");
-  // Serial.print(leftVelocityPure*leftCorrection);
-  // Serial.print(" , ");
-  // Serial.print(rightVelocityPure*rightCorrection);
-  // Serial.println(")");
+  Serial.print("              Velocity = (");
+  Serial.print(leftVelocityPure*leftCorrection);
+  Serial.print(" , ");
+  Serial.print(rightVelocityPure*rightCorrection);
+  Serial.println(")");
 
   setLeftMotorOrder(leftVelocityPure * leftCorrection);
   setRightMotorOrder(rightVelocityPure * rightCorrection);
