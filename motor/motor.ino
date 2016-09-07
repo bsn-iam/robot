@@ -24,7 +24,7 @@ float speedChosen;
 int stepDurationReal;
 const int stepDurationOrder = 200; // ms for step
 const int timeBeforeBlowing = 1000;
-const int timeBackwardMoving = 400;
+const int timeBackwardMoving = 600;
 const int timeRotatingMoving = 500;
 
 float voltageAverage = 0;
@@ -111,9 +111,6 @@ const int turnRightTimeout = 400;
 const int turnLeftTimeout = 300;
 
 int stuckState = 0;
-//int stuckedMovement=0;
-int countDownWhileMovingToRight;
-int countDownWhileMovingToLeft;
 
 #define FullSpeed 255
 #define HalfSpeed 200
@@ -130,9 +127,6 @@ int countDownWhileMovingToLeft;
 #define Spiral 3
 #define LowBattery 3
 int mode = Spiral;
-
-
-
 
 //enum modes { None, Joystick, Auto, Off, LowBattery};
 //modes mode=None;
@@ -723,26 +717,20 @@ int  getSpeed() {
   if (rightSonarDistance == 0) {
     Serial.println("Warning! Right sonar is not available!");
     tone(pinBuzzer, 900, 10);
-    //return HalfSpeed;
   }
   if (leftSonarDistance == 0) {
     Serial.println("Warning! Left sonar is not available!");
     tone(pinBuzzer, 900, 10);
-    //return HalfSpeed;
   }
 
-  if ( countDownWhileMovingToRight > 0 || countDownWhileMovingToLeft > 0 ) {
-    return FullSpeed;
-  }
   if (isInTheRange(rightSonarDistance, 1, 20) || isInTheRange(leftSonarDistance, 1, 20)) {
     return QuarterSpeed;
   }
   if (isInTheRange(rightSonarDistance, 20, 50) || isInTheRange(leftSonarDistance, 20, 50)) {
     return HalfSpeed;
   }
-  if (isInTheRange(rightSonarDistance, 50, 9999) || isInTheRange(leftSonarDistance, 50, 9999)) {
-    return FullSpeed;
-  }
+  //if rotating - full speed manually.
+  // if sonarDistance < 1cm or > 50cm - FullSpeed
   return FullSpeed;
 }
 
@@ -756,13 +744,13 @@ boolean isInTheRange(float parameter, float minimum, float maximum) {
 
 void processMovement() {
   if (isLeftSideCollision()) {
-    startForceMovement(1, 1, turnRightTimeout);
+    startForceMovement(rotateRight, FullSpeed, turnRightTimeout);
     Serial.println("Right side backward");
     return;
   }
 
   if (isRightSideCollision()) {
-    startForceMovement(1, 1, turnLeftTimeout);
+    startForceMovement(rotateLeft, FullSpeed, turnLeftTimeout);
     Serial.println("Left side backward");
     return;
   }
@@ -946,6 +934,11 @@ void moveSmart(float courseOrderRel, float speedOrderRel)
     rightVelocityPureRel = rightVelocityPureRel - leftVelocityPureRel + 1; //[-1;1]
     leftVelocityPureRel = 1;
   }
+  
+  //rising speed for low orders. 
+  leftVelocityPureRel=smoothLow(leftVelocityPureRel);
+  rightVelocityPureRel=smoothLow(rightVelocityPureRel);
+  
   leftVelocityPure = speedOrderRel * leftVelocityPureRel * 255; //[-255;255]
   rightVelocityPure = speedOrderRel * rightVelocityPureRel * 255; //[-255;255]
 
@@ -973,8 +966,8 @@ void moveSmart(float courseOrderRel, float speedOrderRel)
       Serial.println(courseCorrection);
       leftCorrection = min(courseCorrection, 255 / leftVelocityPure); // v - [0; 255]
       rightCorrection = min(1 / courseCorrection, 255 / rightVelocityPure); // v - [0; 255]
-      leftCorrection = max(leftCorrection, 0.6); // v - [0.7U; 255]
-      rightCorrection = max(rightCorrection, 0.6); // v - [0.7U; 255]
+      leftCorrection = max(leftCorrection, 0.6); // v - [0.6U; 255]
+      rightCorrection = max(rightCorrection, 0.6); // v - [0.6U; 255]
     }
   }
 
@@ -994,6 +987,15 @@ void moveSmart(float courseOrderRel, float speedOrderRel)
   return;
 }
 
+float smoothLow(float velocity) {
+  float speedOrder;
+  if (velocity >=0) {
+	  speedOrder=sqrt(2*velocity - velocity*velocity);
+  } else {
+	 speedOrder=-sqrt(2*abs(velocity)- abs(velocity)*abs(velocity)); 
+  }
+  return speedOrder;
+}	
 
 void stopMotors() {
   moveSmart(0, 0);
