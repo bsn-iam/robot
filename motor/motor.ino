@@ -3,9 +3,9 @@
 
 // To support more than 5 receivers, remember to change the define
 // IR_PARAMS_MAX in IRremoteInt.h as well.
-#define IRamount 0
-IRrecv *irrecvs[IRamount];
-decode_results results;
+// #define IRamount 0
+// IRrecv *irrecvs[IRamount];
+// decode_results results;
 
 const int Serial1Baud = 9600; //UART port speed
 const int SerialBaud = 19200; //UART port speed
@@ -198,14 +198,14 @@ void setup() {
   for (int index = 1; index <= motorCurrentSmoothingAmount; index++)
     motorCurrentArray[index] = 0;
 
-  irrecvs[0] = new IRrecv(pinIR1); // Receiver #0: pin 2
-  irrecvs[1] = new IRrecv(pinIR2); // Receiver #1: pin 3
+  // irrecvs[0] = new IRrecv(pinIR1); // Receiver #0: pin 2
+  // irrecvs[1] = new IRrecv(pinIR2); // Receiver #1: pin 3
   // irrecvs[2] = new IRrecv(pinIR3); // Receiver #2: pin 4
   // irrecvs[3] = new IRrecv(pinIR4); // Receiver #3: pin 5
   // irrecvs[4] = new IRrecv(pinIR5); // Receiver #4: pin 6
 
-  for (int i = 0; i < IRamount; i++)
-    irrecvs[i]->enableIRIn();
+  // for (int i = 0; i < IRamount; i++)
+    // irrecvs[i]->enableIRIn();
 
   //  playRandomSong();//uncomment to play a music
   getStartSound();
@@ -233,7 +233,7 @@ void loop() {
     }
   }
 
-  readIR();
+  // readIR();
 
   forceMovementHandler();
   if (stuckState) incrementAtTheEnd(stuckState);
@@ -263,74 +263,74 @@ void setMode () {
 }
 
 
-void readIR() {
-  for (int i = 0; i < IRamount; i++)
-  {
-    if (irrecvs[i]->decode(&results))
-    {
-		if(results.value == 0xE0E0E01F || results.value == 0x8F7708F ) {
-		// if(1 ) {
-			tone(pinBuzzer, 1900, 10);
-		  Serial.print("Receiver #");
-		  Serial.print(i);
-		  Serial.print(":");
-		  Serial.println(results.value, HEX);
-		  //Serial.println(results.value, DEC);
-		}
-      //IRinfo(&results);
-      irrecvs[i]->resume();
-    }
-  }
-  return;
-}
+// void readIR() {
+  // for (int i = 0; i < IRamount; i++)
+  // {
+    // if (irrecvs[i]->decode(&results))
+    // {
+		// if(results.value == 0xE0E0E01F || results.value == 0x8F7708F ) {
+		// // if(1 ) {
+			// tone(pinBuzzer, 1900, 10);
+		  // Serial.print("Receiver #");
+		  // Serial.print(i);
+		  // Serial.print(":");
+		  // Serial.println(results.value, HEX);
+		  // //Serial.println(results.value, DEC);
+		// }
+      // //IRinfo(&results);
+      // irrecvs[i]->resume();
+    // }
+  // }
+  // return;
+// }
 
 
-void IRinfo(decode_results *results) {
-  // Dumps out the decode_results structure.
-  // Call this after IRrecv::decode()
-  int count = results->rawlen;
-  if (results->decode_type == UNKNOWN) {
-    Serial.print("Unknown encoding: ");
-  }
-  else if (results->decode_type == NEC) {
-    Serial.print("Decoded NEC: ");
-  }
-  else if (results->decode_type == SONY) {
-    Serial.print("Decoded SONY: ");
-  }
-  else if (results->decode_type == RC5) {
-    Serial.print("Decoded RC5: ");
-  }
-  else if (results->decode_type == RC6) {
-    Serial.print("Decoded RC6: ");
-  }
-  else if (results->decode_type == PANASONIC) {
-    Serial.print("Decoded PANASONIC - Address: ");
-    Serial.print(results->address, HEX);
-    Serial.print(" Value: ");
-  }
-  else if (results->decode_type == LG) {
-    Serial.print("Decoded LG: ");
-  }
-  else if (results->decode_type == JVC) {
-    Serial.print("Decoded JVC: ");
-  }
-  else if (results->decode_type == AIWA_RC_T501) {
-    Serial.print("Decoded AIWA RC T501: ");
-  }
-  else if (results->decode_type == WHYNTER) {
-    Serial.print("Decoded Whynter: ");
-  }
-  Serial.print(results->value, HEX);
-  Serial.print(" (");
-  Serial.print(results->bits, DEC);
-  Serial.println(" bits)");
-  Serial.print("Raw (");
-  Serial.print(count, DEC);
-  Serial.print("): ");
+// void IRinfo(decode_results *results) {
+  // // Dumps out the decode_results structure.
+  // // Call this after IRrecv::decode()
+  // int count = results->rawlen;
+  // if (results->decode_type == UNKNOWN) {
+    // Serial.print("Unknown encoding: ");
+  // }
+  // else if (results->decode_type == NEC) {
+    // Serial.print("Decoded NEC: ");
+  // }
+  // else if (results->decode_type == SONY) {
+    // Serial.print("Decoded SONY: ");
+  // }
+  // else if (results->decode_type == RC5) {
+    // Serial.print("Decoded RC5: ");
+  // }
+  // else if (results->decode_type == RC6) {
+    // Serial.print("Decoded RC6: ");
+  // }
+  // else if (results->decode_type == PANASONIC) {
+    // Serial.print("Decoded PANASONIC - Address: ");
+    // Serial.print(results->address, HEX);
+    // Serial.print(" Value: ");
+  // }
+  // else if (results->decode_type == LG) {
+    // Serial.print("Decoded LG: ");
+  // }
+  // else if (results->decode_type == JVC) {
+    // Serial.print("Decoded JVC: ");
+  // }
+  // else if (results->decode_type == AIWA_RC_T501) {
+    // Serial.print("Decoded AIWA RC T501: ");
+  // }
+  // else if (results->decode_type == WHYNTER) {
+    // Serial.print("Decoded Whynter: ");
+  // }
+  // Serial.print(results->value, HEX);
+  // Serial.print(" (");
+  // Serial.print(results->bits, DEC);
+  // Serial.println(" bits)");
+  // Serial.print("Raw (");
+  // Serial.print(count, DEC);
+  // Serial.print("): ");
 
-  Serial.println();
-}
+  // Serial.println();
+// }
 
 
 void encoderMonitorLeft () {
@@ -591,14 +591,14 @@ float  getBatteryVoltage() {
   int OutNow = analogRead(pinVoltage);
 
   if (OutNow == 0) {
-    Serial.println("Battery pin is not connected");
+    Serial.println("Battery pin is not connected. Go to sleep.");
     tone(pinBuzzer, 2700, 50);
     goToSleep();
   }
   if (OutNow == 1023) {
-    Serial.println("Battery voltage is greater then allowed!");
+    Serial.println("Warning! Battery voltage is greater then allowed!");
     tone(pinBuzzer, 2700, 5);
-    goToSleep();
+    //goToSleep();
   }
   float VoltageNow = OutNow * voltageDividerCoeff * 5 / 1023 * arefCoeff * strangeKoeff;
 
@@ -636,16 +636,16 @@ void checkBattery(float currentVoltage) {
     tone(pinBuzzer, 1700, 5);
   }
   if (currentVoltage < minBatteryValue) {
-    Serial.print("ALARM! Minimal battery voltage - ");
+    Serial.print("ALARM! Go to sleep. Minimal battery voltage - ");
     Serial.println(currentBatteryVoltage);
     tone(pinBuzzer, 2700, 50);
     goToSleep();
   }
   if (currentVoltage > maxBatteryValue) {
-    Serial.print("ALARM! Maximal battery voltage - ");
+    Serial.print("ALARM! Go to sleep. Maximal battery voltage - ");
     Serial.println(currentBatteryVoltage);
-    tone(pinBuzzer, 2000, 500);
-    goToSleep();
+    //tone(pinBuzzer, 2000, 500);
+    //goToSleep();
   }
   return;
 }
@@ -661,7 +661,7 @@ void goToSleep() {
   StopBlowing();
   //tone(pinBuzzer, 1700, 3000);
   digitalWrite(pinOwnPowerSwitch, 0);
-  delay(1000);
+  delay(5000);
   digitalWrite(pinOwnPowerSwitch, 1);
   return;
 }
@@ -702,7 +702,7 @@ void getStartSound() {
 }
 
 const float spiralStep = 0.005;
-const float spiralDirectionLimit = 0.2;
+const float spiralDirectionLimit = 0.4;
 
 float increment = spiralStep;
 float spiralDirectionOrder = spiralDirectionLimit;
@@ -959,7 +959,6 @@ int rightVelocityPure_prev;
 
 void moveSmart(float courseOrderRel, float speedOrderRel)
 {
-	
   float leftVelocityPureRel;
   float rightVelocityPureRel;
   int leftVelocityPure;
@@ -971,7 +970,12 @@ void moveSmart(float courseOrderRel, float speedOrderRel)
   float leftCorrection = 1;
   float rightCorrection = 1;
 
+  haltIfElevated(courseOrderRel, speedOrderRel);
   
+  if ( abs(courseOrderRel)>1 || abs(speedOrderRel)>1 ) {
+	  Serial.println("ERROR! Incorrect velocity order!");
+	  goToSleep();
+  }
   
   rightVelocityPureRel = 1 - courseOrderRel; //[0;2]
   leftVelocityPureRel = 1 + courseOrderRel; //[0;2]
@@ -986,7 +990,6 @@ void moveSmart(float courseOrderRel, float speedOrderRel)
     leftVelocityPureRel = 1;
   }
   
-  
   // Serial.print("leftVelocityPureRel=");
   // Serial.println(leftVelocityPureRel);
   
@@ -994,8 +997,8 @@ void moveSmart(float courseOrderRel, float speedOrderRel)
   // Serial.println(rightVelocityPureRel);
   
   //rising speed for low orders. 
-  leftVelocityPureRel=smoothLow(leftVelocityPureRel);
-  rightVelocityPureRel=smoothLow(rightVelocityPureRel);
+  leftVelocityPureRel=smoothLow(leftVelocityPureRel); //[-1;1]
+  rightVelocityPureRel=smoothLow(rightVelocityPureRel); //[-1;1]
   
   leftVelocityPure = speedOrderRel * leftVelocityPureRel * 255; //[-255;255]
   rightVelocityPure = speedOrderRel * rightVelocityPureRel * 255; //[-255;255]
@@ -1006,6 +1009,10 @@ void moveSmart(float courseOrderRel, float speedOrderRel)
   // Serial.print(rightVelocityPure);
   // Serial.println(")");
 
+
+  // Serial.print("              Velocity = (");
+  // Serial.print(leftVelocityPure);
+	
   //correct the direction
   if (courseOrderRel_prev == courseOrderRel && speedOrderRel_prev == speedOrderRel) {
     float stepLeft = encoderLeftLastStep();
@@ -1016,24 +1023,24 @@ void moveSmart(float courseOrderRel, float speedOrderRel)
       courseDeviationOrder = abs(leftVelocityPure_prev / rightVelocityPure_prev); //(0;Inf)
       courseCorrection = courseDeviationOrder / courseDeviationReal; //(0;Inf)
 
-      Serial.print("courseDeviationReal= ");
-      Serial.print(courseDeviationReal);
-      Serial.print(", courseDeviationOrder= ");
-      Serial.print(courseDeviationOrder);
-      Serial.print(", courseCorrection= ");
-      Serial.println(courseCorrection);
+      // Serial.print("courseDeviationReal= ");
+      // Serial.print(courseDeviationReal);
+      // Serial.print(", courseDeviationOrder= ");
+      // Serial.print(courseDeviationOrder);
+      // Serial.print(", courseCorrection= ");
+      // Serial.println(courseCorrection);
       leftCorrection = min(courseCorrection, 255 / leftVelocityPure); // v - [0; 255]
       rightCorrection = min(1 / courseCorrection, 255 / rightVelocityPure); // v - [0; 255]
-      leftCorrection = max(leftCorrection, 0.6); // v - [0.6U; 255]
-      rightCorrection = max(rightCorrection, 0.6); // v - [0.6U; 255]
+      leftCorrection = max(leftCorrection, 0.7); // v - [0.7U; 255]
+      rightCorrection = max(rightCorrection, 0.7); // v - [0.7U; 255]
     }
   }
 
-  Serial.print("              Velocity = (");
-  Serial.print(leftVelocityPure*leftCorrection);
-  Serial.print(" , ");
-  Serial.print(rightVelocityPure*rightCorrection);
-  Serial.println(")");
+  // Serial.print("              Velocity = (");
+  // Serial.print(leftVelocityPure*leftCorrection);
+  // Serial.print(" , ");
+  // Serial.print(rightVelocityPure*rightCorrection);
+  // Serial.println(")");
 
   setLeftMotorOrder(leftVelocityPure * leftCorrection);
   setRightMotorOrder(rightVelocityPure * rightCorrection);
@@ -1044,6 +1051,40 @@ void moveSmart(float courseOrderRel, float speedOrderRel)
   rightVelocityPure_prev = rightVelocityPure;
   return;
 }
+
+int noChangeStepCount=0;
+
+int maximumElevatedTime=10000;
+void haltIfElevated (float speed, float course) {
+	checkForElevation (speed, course);
+	int timeFromLastChange=noChangeStepCount*stepDurationOrder;
+	// Serial.print("Time since last course change - ");
+	Serial.println(timeFromLastChange);
+	if ( timeFromLastChange > maximumElevatedTime ) {
+		Serial.println("Elevated state detected. Go to sleep.");
+		goToSleep();
+		noChangeStepCount=0;
+	}
+	return;
+}
+
+float speed_prev;
+float course_prev;
+void checkForElevation (float speed, float course) {
+	if (motorPower && (mode==Auto || mode==Spiral)) {
+	  if (course_prev == course && speed_prev == speed) {
+		  noChangeStepCount++;
+	  } else {
+		noChangeStepCount=0;
+	  }
+	} else {
+	  noChangeStepCount=0;
+	}
+	course_prev = course;
+	speed_prev == speed;
+  return;	
+}
+
 
 float smoothLow(float velocity) {
   float speedOrder;
