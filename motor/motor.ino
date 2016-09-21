@@ -1,14 +1,15 @@
+#include <LiquidCrystal.h>
 
 const int Serial1Baud = 9600; //UART port speed
 const int SerialBaud = 19200; //UART port speed
 unsigned long loopStartTime;
-int timeLabelCurrent = 0;
+unsigned long timeLabelCurrent = 0;
 const float voltageDividerCoeff = 4.02;
 const float minBatteryValue = 10.5; //volt
 const float lowBatteryValue = 11; //volt
 const float blowingStartBatteryValue = 10.5; //volt
 const float blowingStopBatteryValue = 10.0; //volt
-const float maxBatteryValue = 13; //volt
+const float maxBatteryValue = 14; //volt
 const float okBatteryValue = 12.4; //volt Used for stuck calculation
 const float arefCoeff = 0.919;
 float speedChosen;
@@ -44,6 +45,22 @@ float motorCurrentArray[motorCurrentSmoothingAmount + 1];    // the readings fro
 //int sonarPins[] = {1, 2};//Analog Pin Nums to sonar sensor Pin AN
 //float samples[sizeof(sonarPins)][SamplesAmount];
 //int sampleIndex[sizeof(sonarPins)];
+
+  // The circuit:
+ // 1* LCD RS pin to digital pin
+ // 2* LCD Enable pin to digital pin
+ // 3* LCD D4 pin to digital pin
+ // 4* LCD D5 pin to digital pin
+ // 5* LCD D6 pin to digital pin
+ // 6* LCD D7 pin to digital pin
+ // * LCD R/W pin to ground
+ // * LCD VSS pin to ground
+ // * LCD VCC pin to 5V
+ // * 10K resistor:
+ // * ends to +5V and ground
+ // * wiper to LCD VO pin (pin 3)
+// initialize the library with the numbers of the interface pins
+LiquidCrystal lcd(41, 42, 43, 44, 45, 46);
 
 //right side
 const int pinRightMotorDirection = 4; //this can be marked on motor shield as "DIR A"
@@ -139,6 +156,7 @@ void initPins() {
   digitalWrite(pinRX0, HIGH);
 
   pinMode(pinOwnPowerSwitch, OUTPUT);
+  pinMode(pinSpinning, OUTPUT);
   pinMode(pinBlower, OUTPUT);
   digitalWrite(pinBlower, HIGH);
 
@@ -185,6 +203,8 @@ void setup() {
   for (int index = 1; index <= motorCurrentSmoothingAmount; index++)
     motorCurrentArray[index] = 0;
 
+  lcdWelcomePrint ();
+
   //  playRandomSong();//uncomment to play a music
   getStartSound();
   delay(1000);
@@ -193,7 +213,7 @@ void setup() {
 //Main loop
 void loop() {
   loopStartTime = millis();
-  timeLabelCurrent = loopStartTime;
+  // timeLabelCurrent = loopStartTime;
   //printTimeLabel(1);
 
   currentBatteryVoltage = getBatteryVoltage();
@@ -238,6 +258,18 @@ void setMode () {
   return;
 }
 
+void lcdWelcomePrint () {
+  // set the cursor to column 0, line 1
+  // (note: line 1 is the second row, since counting begins with 0):
+  lcd.setCursor(0, 1);
+  
+  // set up the LCD's number of columns and rows:
+  lcd.begin(16, 2);
+  
+  // Print a message to the LCD.
+  lcd.print("hello, world!");
+	
+}
 
 void encoderMonitorLeft () {
   bool isDecreasing;
@@ -336,12 +368,13 @@ void checkForStuck() {
   return;
 }
 
-float encoderLeftAverage;
-float encoderLeftSum;
-float encoderRightAverage;
-float encoderRightSum;
-
 bool encodersStuck(float speedOrder) {
+
+  float encoderLeftAverage;
+  float encoderLeftSum;
+  float encoderRightAverage;
+  float encoderRightSum;
+
   motorPower = digitalRead(pinMotorOrder);
   if (speedOrder > 50 && motorPower) {
     encoderLeftSum = 0;
@@ -527,11 +560,11 @@ float  getBatteryVoltage() {
 void setSpinBlowState(float currentVoltage) {
   if ( currentVoltage > blowingStartBatteryValue && !stuckState ) {
     StartBlowing();
-    StartSpinning();
+    startSpinning();
   }
   if ( currentVoltage < blowingStopBatteryValue || stuckState ) {
-    StopBlowing();
-    StopSpinning();
+    stopBlowing();
+    stopSpinning();
   }
   return;
 }
@@ -540,7 +573,7 @@ void checkBattery(float currentVoltage) {
   if (currentVoltage < lowBatteryValue) {
     Serial.print("WARNING! Low battery voltage - ");
     Serial.println(currentVoltage);
-    //StopBlowing();
+    //stopBlowing();
     tone(pinBuzzer, 1700, 5);
   }
   if (currentVoltage < minBatteryValue) {
@@ -566,8 +599,8 @@ void lockPower() {
 
 
 void goToSleep() {
-  StopBlowing();
-  StopSpinning();
+  stopBlowing();
+  stopSpinning();
   //tone(pinBuzzer, 1700, 3000);
   digitalWrite(pinOwnPowerSwitch, 0);
   delay(5000);
@@ -575,8 +608,8 @@ void goToSleep() {
   return;
 }
 
-unsigned long timeBlowingStart = 0;
 void StartBlowing() {
+static unsigned long timeBlowingStart = 0;
   if (digitalRead(pinBlower)) {
     if (timeBlowingStart == 0) {
       timeBlowingStart = millis();
@@ -588,23 +621,28 @@ void StartBlowing() {
   }
   return;
 }
-void StopBlowing() {
+void stopBlowing() {
   digitalWrite(pinBlower, HIGH);
   return;
 }
 
-void ChangeBlowing() {
+void changeBlowing() {
   digitalWrite(pinBlower, !digitalRead(pinBlower));
   return;
 }
 
-void StartSpinning() {
+void startSpinning() {
   digitalWrite(pinSpinning, HIGH);
   return;
 }
 
-void StopSpinning() {
+void stopSpinning() {
   digitalWrite(pinSpinning, LOW);
+  return;
+}
+
+void changeSpinning() {
+  digitalWrite(pinSpinning, !digitalRead(pinSpinning));
   return;
 }
 
@@ -624,10 +662,9 @@ void getStartSound() {
 const float spiralStep = 0.005;
 const float spiralDirectionLimit = 0.4;
 
-float increment = spiralStep;
-float spiralDirectionOrder = spiralDirectionLimit;
-
 float getDirection() {
+  static float spiralDirectionOrder = spiralDirectionLimit;
+  static float increment = spiralStep;
   if (mode == Spiral) {
     if (spiralDirectionOrder >= abs(spiralDirectionLimit)) {
       increment = -abs(spiralStep);
@@ -702,8 +739,8 @@ void processMovement() {
   return;
 }
 
-float rightSonarDistance_prev;
 bool isRightSideCollision () {
+  static float rightSonarDistance_prev;
   rightSonarDistance_prev=rightSonarDistance;
   rightSonarDistance = checkTheDistance (pinRightSonarTrig, pinRightSonarEcho, "Right");
   if (checkTheCollision (rightSonarDistance, rightSonarDistance_prev, "Right") || isBumperPressed(pinRightBumper)) {
@@ -714,9 +751,9 @@ bool isRightSideCollision () {
   return false;
 }
 
-float leftSonarDistance_prev;
 
 bool isLeftSideCollision () {
+  static float leftSonarDistance_prev;
   leftSonarDistance_prev=leftSonarDistance;
   leftSonarDistance = checkTheDistance (pinLeftSonarTrig, pinLeftSonarEcho, "Left");
   if (checkTheCollision (leftSonarDistance, leftSonarDistance_prev, "Left") || isBumperPressed(pinLeftBumper)) {
@@ -734,14 +771,8 @@ float checkTheDistance (int pinSonarTrig, int pinSonarEcho, char descr[ ]) {
   digitalWrite(pinSonarTrig, HIGH);
   delayMicroseconds(10);
   digitalWrite(pinSonarTrig, LOW);
-  int startTime;
-  startTime = millis();
+
   duration = pulseIn(pinSonarEcho, HIGH, 50000);
-  // Serial.print("Pulse duration: ");
-  // Serial.print(descr);
-  // Serial.println(duration);
-  // int pulseDuration;
-  // pulseDuration = millis() - startTime;
   cm = duration / 58;
   return cm;
 }
@@ -749,6 +780,7 @@ float checkTheDistance (int pinSonarTrig, int pinSonarEcho, char descr[ ]) {
 bool checkTheCollision (float distance, float distance_prev, char descr[ ]) {
   bool sonarFreeze=false;
   if (distance == distance_prev) {
+	tone(pinBuzzer, 2500, 20);
     Serial.print(descr);
     Serial.print(" sonar is dead. Result is ");
     Serial.println(distance);
@@ -762,119 +794,75 @@ bool checkTheCollision (float distance, float distance_prev, char descr[ ]) {
 }
 
 
-
-String readSerial1 ()
+char readSerial1 ()
 {
   char inChar;
   inChar = ' ';
-  String inputString = "";         // a string to hold incoming data
-  //boolean stringComplete = false;  // whether the string is complete
-  // reserve 200 bytes for the inputString:
+  String inputString = "";
   inputString.reserve(200);
   while (Serial1.available() > 0) {
     inChar = (char)Serial1.read();
-    inputString = ""; //Remove to get a whole string
+    inputString = "";
     inputString += inChar;
-    //while ( strlen(inChar) != 0 ) {
-    //  inputString = ""; //Remove to get a whole string
-    //  inputString += inChar;
-    //}
-    //if (inChar != 0x00) {
-    //stringComplete = true;
-    //  return inputString;
-    //}
   }
-  return inputString;
+  char output=inputString[0];
+  return output;
 }
 
-bool BluetoothCheck ()
+void BluetoothCheck ()
 {
-  String inputString = readSerial1 ();
-  char input=inputString[0];
+  char input= readSerial1 ();
   if ( mode == Joystick )
   {
 	switch ( input ) {
     case 'u':
 	  moveSmart(0, 1); 
 	  tone(pinBuzzer, 1700, 5); break;
-	  
     case 'd':
 	  moveSmart(0, -1); 
 	  tone(pinBuzzer, 1700, 5); break;
-	  
     case 'l':
 	  moveSmart(-1, 1); 
 	  tone(pinBuzzer, 1700, 5); break;
-	  
     case 'r':
 	  moveSmart(1, 1); 
 	  tone(pinBuzzer, 1700, 5); break;
-	    
     case '\0':
 	  Serial.println("Stop");
 	  stopMotors(); break;
     }
   }
-  if ( input == 'm')
-  {
-    Serial.println("Manual mode");
-    tone(pinBuzzer, 1700, 5);
+  switch ( input ) {
+  case 'm':
     mode = Joystick;
-    delay(1000);
-    return true;
-  }
-  if ( input == 'a')
-  {
-    Serial.println("Auto mode");
-    tone(pinBuzzer, 1700, 5);
-    delay(1000);
+    Serial.println("Manual mode");
+    tone(pinBuzzer, 1700, 5); delay(1000); break;
+  case 'a':
     mode = Auto;
-    return true;
-  }
-
-  if ( input == 'w')
-  {
-    Serial.println("Wall mode");
-    tone(pinBuzzer, 1700, 5);
-    delay(1000);
+    Serial.println("Auto mode");
+    tone(pinBuzzer, 1700, 5); delay(1000); break;
+  case 'w':
     mode = Wall;
-    return true;
-  }
-  if ( input == 's')
-  {
-    Serial.println("Spiral mode");
-    tone(pinBuzzer, 1700, 5);
-    delay(1000);
+    Serial.println("Wall mode");
+    tone(pinBuzzer, 1700, 5); delay(1000); break;
+  case 's':
     mode = Spiral;
-    return true;
-  }
-  if ( input == 'x')
-  {
-    Serial.println("Stop all");
-    tone(pinBuzzer, 1700, 5);
-    delay(1000);
+    Serial.println("Spiral mode");
+    tone(pinBuzzer, 1700, 5); delay(1000); break;
+  case 'x':
     mode = None;
-    return true;
-  }
-
-  if ( input == 'b')
-  {
+    Serial.println("Stop all"); 
+	tone(pinBuzzer, 1700, 5); delay(1000); break;
+  case 'b':
+    changeBlowing();
     Serial.println("Blowing");
-    tone(pinBuzzer, 1700, 5);
-    ChangeBlowing();
-    delay(1000);
-    return true;
-  }
-
-  if ( input == 't') //turn
-  {
+    tone(pinBuzzer, 1700, 5); delay(1000); break;
+  case 't': //turn
+    changeSpinning();
     Serial.println("Spin");
-    tone(pinBuzzer, 1700, 5);
-    delay(1000);
-    //mode = None;
-    return true;
+    tone(pinBuzzer, 1700, 5); delay(1000); break;
   }
-  return false;
+  return;
 }
 
 //moveSmart(0,1)- forward full speed
@@ -883,13 +871,14 @@ bool BluetoothCheck ()
 //moveSmart(0.5,1)- half right full speed
 
 //courseOrderRel - [-1;1], speedOrderRel - [-1;1]
-float courseOrderRel_prev;
-float speedOrderRel_prev;
-int leftVelocityPure_prev;
-int rightVelocityPure_prev;
 
 void moveSmart(float courseOrderRel, float speedOrderRel)
 {
+  static float courseOrderRel_prev;
+  static float speedOrderRel_prev;
+  static int leftVelocityPure_prev;
+  static int rightVelocityPure_prev;
+  
   float leftVelocityPureRel;
   float rightVelocityPureRel;
   int leftVelocityPure;
@@ -984,8 +973,8 @@ void moveSmart(float courseOrderRel, float speedOrderRel)
 }
 
 int noChangeStepCount=0;
-
 int maximumElevatedTime=10000;
+
 void haltIfElevated (float speed, float course) {
 	checkForElevation (speed, course);
 	int timeFromLastChange=noChangeStepCount*stepDurationOrder;
@@ -999,9 +988,9 @@ void haltIfElevated (float speed, float course) {
 	return;
 }
 
-float speed_prev;
-float course_prev;
 void checkForElevation (float speed, float course) {
+  static float speed_prev;
+  static float course_prev;
 	if (motorPower && (mode==Auto || mode==Spiral)) {
 	  if (course_prev == course && speed_prev == speed) {
 		  noChangeStepCount++;
@@ -1036,7 +1025,7 @@ bool isBumperPressed(int pinBumper) {
   return !digitalRead(pinBumper);
 }
 
-////////////////////////////////////
+
 void setLeftMotorOrder(int velocity) {
   setMotorOrder(pinLeftMotorDirection, pinLeftMotorSpeed, velocity);
 }
@@ -1056,7 +1045,6 @@ void setMotorOrder(int pinDirection, int pinSpeed, int velocity) {
 void setMotorSpeed(int pinMotorSpeed, int motorSpeed) {
   analogWrite(pinMotorSpeed, motorSpeed);
 }
-////////////////////////////////////
 
 void runMotorForward(int pinMotorDirection) {
   digitalWrite(pinMotorDirection, HIGH); //set direction forward
