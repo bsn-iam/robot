@@ -1,4 +1,4 @@
-#include <LiquidCrystal.h>
+
 
 const int Serial1Baud = 9600; //UART port speed
 const int SerialBaud = 19200; //UART port speed
@@ -46,22 +46,6 @@ float motorCurrentArray[motorCurrentSmoothingAmount + 1];    // the readings fro
 //float samples[sizeof(sonarPins)][SamplesAmount];
 //int sampleIndex[sizeof(sonarPins)];
 
-  // The circuit:
- // 1* LCD RS pin to digital pin
- // 2* LCD Enable pin to digital pin
- // 3* LCD D4 pin to digital pin
- // 4* LCD D5 pin to digital pin
- // 5* LCD D6 pin to digital pin
- // 6* LCD D7 pin to digital pin
- // * LCD R/W pin to ground
- // * LCD VSS pin to ground
- // * LCD VCC pin to 5V
- // * 10K resistor:
- // * ends to +5V and ground
- // * wiper to LCD VO pin (pin 3)
-// initialize the library with the numbers of the interface pins
-LiquidCrystal lcd(41, 42, 43, 44, 45, 46);
-
 //right side
 const int pinRightMotorDirection = 4; //this can be marked on motor shield as "DIR A"
 const int pinRightMotorSpeed = 5; //this can be marked on motor shield as "PWM A"
@@ -89,11 +73,16 @@ const int pinMotorOrder = 17;
 const int pinOwnPowerSwitch = 22;
 const int pinBlower = 14;
 const int pinSpinning = 26;
-
 const int pinBuzzer = 24;
 
 // Board	int.0	int.1	int.2	int.3	int.4	int.5
 // Mega2560	2		3		21		20		19		18
+const int interruptNumberIR = 5;
+const int pinIRcenter = 18; //corresponds the interrupt number!
+const int pinIRleft = 32; 
+const int pinIRright = 33; 
+
+
 const int interruptNumberLeft = 3;
 const int pinEncoderLeftA = 20; //corresponds the interrupt number!
 const int pinEncoderLeftB = 30;
@@ -115,6 +104,10 @@ const int turnRightTimeout = 400;
 const int turnLeftTimeout = 300;
 
 int stuckState = 0;
+bool isIRcenter;
+bool isIRleft;
+bool isIRright;
+const int lookingTimeMax=2500; //ms to turn around
 
 #define FullSpeed 255
 #define HalfSpeed 200
@@ -130,7 +123,7 @@ int stuckState = 0;
 #define Auto 2
 #define Spiral 3
 #define Wall 4
-#define LowBattery 5
+#define Searching 5
 int mode = Spiral;
 
 //enum modes { None, Joystick, Auto, Off, LowBattery};
@@ -191,6 +184,7 @@ void setup() {
 
   attachInterrupt (interruptNumberLeft, encoderMonitorLeft, CHANGE);
   attachInterrupt (interruptNumberRight, encoderMonitorRight, CHANGE);
+  attachInterrupt (interruptNumberIR, IRmonitorCenter, CHANGE);
 
   for (int index = 1; index <= encoderSmoothingAmount; index++) {
     encoderLeftArray[index] = 10;
@@ -203,9 +197,6 @@ void setup() {
   for (int index = 1; index <= motorCurrentSmoothingAmount; index++)
     motorCurrentArray[index] = 0;
 
-  lcdWelcomePrint ();
-
-  //  playRandomSong();//uncomment to play a music
   getStartSound();
   delay(1000);
 }
@@ -230,7 +221,9 @@ void loop() {
       processMovement();
     }
   }
-
+  
+  if (mode=Searching) IRsearchHandler();
+  
   forceMovementHandler();
   if (stuckState) incrementAtTheEnd(stuckState);
 
@@ -251,24 +244,16 @@ void loop() {
   }
 }
 
+
+
 void setMode () {
-  if (mode == Spiral && wasCollision) {
-    mode = Auto;
+  // if (mode == Spiral && wasCollision) {
+    // mode = Auto;
+  // }
+  if ( doIseeBase() ) {
+	mode = Searching;
   }
   return;
-}
-
-void lcdWelcomePrint () {
-  // set the cursor to column 0, line 1
-  // (note: line 1 is the second row, since counting begins with 0):
-  lcd.setCursor(0, 1);
-  
-  // set up the LCD's number of columns and rows:
-  lcd.begin(16, 2);
-  
-  // Print a message to the LCD.
-  lcd.print("hello, world!");
-	
 }
 
 void encoderMonitorLeft () {
@@ -315,6 +300,14 @@ void encoderMonitorRight () {
 }
 
 
+
+void IRmonitorCenter () {
+  if (mode == Searching) {
+	  stopMotors();
+  }
+  return;
+}
+
 void checkForStuck() {
   if ( encodersStuck(speedChosen) || stuckState ) {
     if (!stuckState) {
@@ -325,9 +318,9 @@ void checkForStuck() {
 
     switch ( stuckState ) {
       case 1:
-        startForceMovement(0, -1, timeBackwardMoving); break;	//backward
+        startForceMovement(stright, -1, timeBackwardMoving); break;	//backward
       case 2:
-        startForceMovement(-1, 1, timeRotatingMoving); break;	//left
+        startForceMovement(rotateLeft, 1, timeRotatingMoving); break;	//left
       default:
         Serial.println("Error! StuckState is outside the range."); break;
     }
@@ -342,13 +335,13 @@ void checkForStuck() {
 
     switch ( stuckState ) {
       case 3:
-        startForceMovement(0, 1, 600); break;	//forward
+        startForceMovement(stright, 1, 600); break;	//forward
       case 4:
-        startForceMovement(-1, 1, timeRotatingMoving); break;	//left
+        startForceMovement(rotateLeft, 1, timeRotatingMoving); break;	//left
       case 5:
-        startForceMovement(0, -1, timeBackwardMoving); break;	//backward
+        startForceMovement(stright, -1, timeBackwardMoving); break;	//backward
       case 6:
-        startForceMovement(-1, 1, timeRotatingMoving); break;	//left
+        startForceMovement(rotateLeft, 1, timeRotatingMoving); break;	//left
       default:
         Serial.println("Error! StuckState is outside the range."); break;
     }
@@ -515,6 +508,63 @@ void incrementAtTheEnd(int &i) {
   return;
 }
 
+
+
+
+void IRsearchHandler () {
+	static int lookingStepCount=0;
+	if ( doIseeBase () ) lookingStepCount=0;
+	if (isIRcenter) {
+		moveSmart(stright, QuarterSpeed/255); 
+	} else {
+		if (isIRleft && !isIRright) { // I see left
+			moveSmart(rotateLeft, HalfSpeed/255); 
+		}
+		
+		if (isIRright && !isIRleft) { //I see right
+			moveSmart(rotateRight, HalfSpeed/255); 
+		}
+		
+		if (isIRright && isIRleft) { //I see right, left, but not centre
+			stopMotors();
+		}
+	}
+	if (!isIRright && !isIRleft && !isIRcenter)	{ //don't see at all
+		int timeWithoutContact=lookingStepCount*stepDurationOrder
+		lookingStepCount++;
+		//lookingTimeMax
+		if (isInTheRange(timeWithoutContact, 1, 150)) {
+			stopMotors();
+		}
+		if (isInTheRange(timeWithoutContact, 150, 300)) {
+			moveSmart(rotateRight, HalfSpeed/255); 
+		}
+		if (isInTheRange(timeWithoutContact, 300, 600)) {
+			moveSmart(rotateLeft, HalfSpeed/255); 
+		}
+		if (timeWithoutContact > 600) {
+			lookingStepCount=0;
+			mode=Auto;
+		}
+	}
+return;	
+}
+
+
+void getIRstate () {
+	isIRcenter=digitalRead(pinIRcenter);
+	isIRleft=digitalRead(pinIRleft);
+	isIRright=digitalRead(pinIRright);
+}
+
+bool doIseeBase () {
+	getIRstate();
+	if (isIRcenter || isIRleft || isIRright) {
+		return true;
+	}
+return false;	
+}
+
 void printTimeLabel(int label) {
   Serial.print("Time label ");
   Serial.print(label);
@@ -601,6 +651,8 @@ void lockPower() {
 void goToSleep() {
   stopBlowing();
   stopSpinning();
+  stopMotors();
+  playRandomSong(); //uncomment to play a music
   //tone(pinBuzzer, 1700, 3000);
   digitalWrite(pinOwnPowerSwitch, 0);
   delay(5000);
@@ -683,11 +735,11 @@ float getDirection() {
 int  getSpeed() {
   if (rightSonarDistance == 0) {
     Serial.println("Warning! Right sonar is not available!");
-    tone(pinBuzzer, 900, 10);
+    //tone(pinBuzzer, 900, 10);
   }
   if (leftSonarDistance == 0) {
     Serial.println("Warning! Left sonar is not available!");
-    tone(pinBuzzer, 900, 10);
+    //tone(pinBuzzer, 900, 10);
   }
 
   if (isInTheRange(rightSonarDistance, 1, 20) || isInTheRange(leftSonarDistance, 1, 20)) {
@@ -779,7 +831,7 @@ float checkTheDistance (int pinSonarTrig, int pinSonarEcho, char descr[ ]) {
 
 bool checkTheCollision (float distance, float distance_prev, char descr[ ]) {
   bool sonarFreeze=false;
-  if (distance == distance_prev) {
+  if (distance == distance_prev && distance != 0) {
 	tone(pinBuzzer, 2500, 20);
     Serial.print(descr);
     Serial.print(" sonar is dead. Result is ");

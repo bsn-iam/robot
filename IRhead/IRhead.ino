@@ -4,30 +4,45 @@
 // To support more than 5 receivers, remember to change the define
 // IR_PARAMS_MAX in IRremoteInt.h as well.
 #define IRamount 3
-  IRrecv *irrecvs[IRamount];
-  decode_results results;
+	IRrecv *irrecvs[IRamount];
+	decode_results results;
 
-const int pinIR1 = 2;
-const int pinIR2 = 3;
-const int pinIR3 = 4;
-// const int pinIR4 = 5;
-// const int pinIR5 = 6;
+const int SerialBaud = 19200; //UART port speed
+
+const int pinLED = 13;
+
+int pinIRinput[IRamount];
+int pinIRoutput[IRamount];
+
+void initPins() {
+	pinIRinput[0]=3;
+	pinIRinput[1]=4;
+	pinIRinput[2]=5;
+	pinIRoutput[0]=10;
+	pinIRoutput[1]=11;
+	pinIRoutput[2]=12;
+
+	for (int i = 0; i < IRamount; i++) {
+		pinMode(pinIRoutput[i], OUTPUT);
+		digitalWrite(pinIRoutput[i], LOW);
+	}  
+}
 
 void setup() {
-	
-  irrecvs[0] = new IRrecv(pinIR1); // Receiver #0: pin 2
-  irrecvs[1] = new IRrecv(pinIR2); // Receiver #1: pin 3
-  irrecvs[2] = new IRrecv(pinIR3); // Receiver #2: pin 4
-  // irrecvs[3] = new IRrecv(pinIR4); // Receiver #3: pin 5
-  // irrecvs[4] = new IRrecv(pinIR5); // Receiver #4: pin 6
+  Serial.begin(SerialBaud);
+  Serial.println("Started..");
+  initPins();
 
-  for (int i = 0; i < IRamount; i++)
-    irrecvs[i]->enableIRIn();
+  for (int i = 0; i < IRamount; i++) {
+	irrecvs[i] = new IRrecv(pinIRinput[i]);
+	irrecvs[i]->enableIRIn();
+  }  
 
 }
 
 void loop() {
   readIR();
+  // delay (20);
 }
 
 
@@ -36,18 +51,18 @@ void readIR() {
   {
     if (irrecvs[i]->decode(&results))
     {
-		if(results.value == 0xE0E0E01F || results.value == 0x8F7708F ) {
-		// if(1 ) {
-			//tone(pinBuzzer, 1900, 10);
-		  Serial.print("Receiver #");
-		  Serial.print(i);
-		  Serial.print(":");
-		  Serial.println(results.value, HEX);
-		  //Serial.println(results.value, DEC);
+		if (results.value == 0xa90 ) {
+			Serial.print(i); Serial.print(". "); Serial.println(results.value, HEX);
+			digitalWrite(pinLED, HIGH);
+			digitalWrite(pinIRoutput[i], HIGH);
+		} else {
+			digitalWrite(pinIRoutput[i], LOW);
 		}
       //IRinfo(&results);
       irrecvs[i]->resume();
-    }
+    } else {
+	  digitalWrite(pinLED, LOW);
+	}
   }
   return;
 }
