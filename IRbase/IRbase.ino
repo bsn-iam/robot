@@ -26,7 +26,7 @@ IRsend irsend;
 
 void setup()
 {
-	  lcdWelcomePrint ();
+	lcdWelcomePrint ();
 }
 
 void loop() {
