@@ -5,8 +5,8 @@ const int SerialBaud = 19200; //UART port speed
 unsigned long loopStartTime;
 unsigned long timeLabelCurrent = 0;
 const float voltageDividerCoeff = 4.02;
-const float minBatteryValue = 10.5; //volt
-const float lowBatteryValue = 11; //volt
+const float minBatteryValue = 10.0; //volt
+const float lowBatteryValue = 10.5; //volt
 const float blowingStartBatteryValue = 10.5; //volt
 const float blowingStopBatteryValue = 10.0; //volt
 const float maxBatteryValue = 14; //volt
@@ -66,7 +66,7 @@ const int pinRightSonarTrig = 50;
 const int distanceInCollision = 10; //cm
 
 const int pinLed = 13;
-const int pinRX0 = 19;
+//const int pinRX0 = 19;
 const int pinVoltage = 15;
 const int pinMotorCurrent = 9;
 const int pinMotorOrder = 17;
@@ -77,10 +77,10 @@ const int pinBuzzer = 24;
 
 // Board	int.0	int.1	int.2	int.3	int.4	int.5
 // Mega2560	2		3		21		20		19		18
-const int interruptNumberIR = 5;
-const int pinIRcenter = 18; //corresponds the interrupt number!
-const int pinIRleft = 32; 
-const int pinIRright = 33; 
+const int interruptNumberIR = 4;
+const int pinIRcenter = 34; // IRheadPin 10 //corresponds the interrupt number!
+const int pinIRleft = 32;  // IRheadPin 11
+const int pinIRright = 36;  // IRheadPin 12
 
 
 const int interruptNumberLeft = 3;
@@ -104,9 +104,9 @@ const int turnRightTimeout = 400;
 const int turnLeftTimeout = 300;
 
 int stuckState = 0;
-bool isIRcenter;
-bool isIRleft;
-bool isIRright;
+bool isIRcenter=false;
+bool isIRleft=false;
+bool isIRright=false;
 const int lookingTimeMax=2500; //ms to turn around
 
 #define FullSpeed 255
@@ -145,8 +145,8 @@ void initPins() {
   pinMode(pinRightSonarTrig, OUTPUT);
   pinMode(pinLed, OUTPUT);
 
-  pinMode(pinRX0, INPUT);
-  digitalWrite(pinRX0, HIGH);
+  // pinMode(pinRX0, INPUT);
+  // digitalWrite(pinRX0, HIGH);
 
   pinMode(pinOwnPowerSwitch, OUTPUT);
   pinMode(pinSpinning, OUTPUT);
@@ -155,6 +155,13 @@ void initPins() {
 
   pinMode(pinVoltage, INPUT);
   digitalWrite(pinVoltage, HIGH);
+  
+  pinMode(pinIRcenter, INPUT);
+  digitalWrite(pinIRcenter, LOW);  
+  pinMode(pinIRleft, INPUT);
+  digitalWrite(pinIRleft, LOW);
+  pinMode(pinIRright, INPUT);
+  digitalWrite(pinIRright, LOW);
 
   pinMode(pinMotorCurrent, INPUT);
   digitalWrite(pinMotorCurrent, LOW);
@@ -184,7 +191,7 @@ void setup() {
 
   attachInterrupt (interruptNumberLeft, encoderMonitorLeft, CHANGE);
   attachInterrupt (interruptNumberRight, encoderMonitorRight, CHANGE);
-  attachInterrupt (interruptNumberIR, IRmonitorCenter, CHANGE);
+  // attachInterrupt (interruptNumberIR, IRmonitorCenter, CHANGE);
 
   for (int index = 1; index <= encoderSmoothingAmount; index++) {
     encoderLeftArray[index] = 10;
@@ -214,15 +221,15 @@ void loop() {
 
   BluetoothCheck();
 
+  setSpinBlowState(currentBatteryVoltage, mode);
+  
   if (mode == Auto || mode == Spiral) {
-    setSpinBlowState(currentBatteryVoltage);
-    checkForStuck();
-    if (!stuckState) {
-      processMovement();
-    }
+    processMovement();
   }
   
-  if (mode=Searching) IRsearchHandler();
+  if (mode == Searching) {
+    IRsearchHandler();
+  }
   
   forceMovementHandler();
   if (stuckState) incrementAtTheEnd(stuckState);
@@ -245,7 +252,6 @@ void loop() {
 }
 
 
-
 void setMode () {
   // if (mode == Spiral && wasCollision) {
     // mode = Auto;
@@ -253,6 +259,7 @@ void setMode () {
   if ( doIseeBase() ) {
 	mode = Searching;
   }
+
   return;
 }
 
@@ -509,44 +516,61 @@ void incrementAtTheEnd(int &i) {
 }
 
 
-
-
 void IRsearchHandler () {
 	static int lookingStepCount=0;
-	if ( doIseeBase () ) lookingStepCount=0;
-	if (isIRcenter) {
-		moveSmart(stright, QuarterSpeed/255); 
-	} else {
-		if (isIRleft && !isIRright) { // I see left
-			moveSmart(rotateLeft, HalfSpeed/255); 
-		}
-		
-		if (isIRright && !isIRleft) { //I see right
-			moveSmart(rotateRight, HalfSpeed/255); 
-		}
-		
-		if (isIRright && isIRleft) { //I see right, left, but not centre
-			stopMotors();
-		}
-	}
-	if (!isIRright && !isIRleft && !isIRcenter)	{ //don't see at all
-		int timeWithoutContact=lookingStepCount*stepDurationOrder
-		lookingStepCount++;
-		//lookingTimeMax
-		if (isInTheRange(timeWithoutContact, 1, 150)) {
-			stopMotors();
-		}
-		if (isInTheRange(timeWithoutContact, 150, 300)) {
-			moveSmart(rotateRight, HalfSpeed/255); 
-		}
-		if (isInTheRange(timeWithoutContact, 300, 600)) {
-			moveSmart(rotateLeft, HalfSpeed/255); 
-		}
-		if (timeWithoutContact > 600) {
-			lookingStepCount=0;
-			mode=Auto;
-		}
-	}
+  if (mode==Searching) {
+    stopBlowing();
+    stopSpinning();     
+    if ( doIseeBase () ) lookingStepCount=0;
+    
+    if (isLeftSideCollision() || isRightSideCollision()) {
+      processMovement();
+    } else {
+      
+      if (isIRcenter) {
+        moveSmart(stright, FullSpeed/255.0); 
+        Serial.println("IRhead. I see it!");
+      } else {
+        if (isIRleft && !isIRright) { // I see left
+          moveSmart(rotateLeft, QuarterSpeed/255.0); 
+          Serial.println("IRhead. I see left.");
+        }
+        
+        if (isIRright && !isIRleft) { //I see right
+          moveSmart(rotateRight, QuarterSpeed/255.0); 
+          Serial.println("IRhead. I see right.");
+        }
+        
+        if (isIRright && isIRleft) { //I see right, left, but not centre
+          stopMotors();
+          Serial.println("IRhead. I see sides.");
+        }
+      }
+      if (!isIRright && !isIRleft && !isIRcenter)	{ //don't see at all
+        int timeWithoutContact=lookingStepCount*stepDurationOrder;
+        lookingStepCount++;
+        //lookingTimeMax
+        if (isInTheRange(timeWithoutContact, 1, 500)) {
+          stopMotors();
+          Serial.println("IRhead. Stopping.");
+        }
+        if (isInTheRange(timeWithoutContact, 500, 3000)) {
+          moveSmart(rotateRight, QuarterSpeed/255.0); 
+          Serial.println("IRhead. Rotating right.");
+        }
+        if (isInTheRange(timeWithoutContact, 3000, 6000)) {
+          moveSmart(rotateLeft, QuarterSpeed/255.0); 
+          Serial.println("IRhead. Rotating left.");
+        }
+        if (timeWithoutContact > 6000) {
+          processMovement();
+          //lookingStepCount=0;
+          //mode=Auto;
+          //Serial.println("IRhead. Exit.");
+        }
+      }
+    }
+  }
 return;	
 }
 
@@ -555,6 +579,9 @@ void getIRstate () {
 	isIRcenter=digitalRead(pinIRcenter);
 	isIRleft=digitalRead(pinIRleft);
 	isIRright=digitalRead(pinIRright);
+  Serial.print("("); Serial.print(isIRleft);
+  Serial.print(", "); Serial.print(isIRcenter);
+  Serial.print(", "); Serial.print(isIRright); Serial.println(")"); 
 }
 
 bool doIseeBase () {
@@ -607,15 +634,17 @@ float  getBatteryVoltage() {
 }
 
 
-void setSpinBlowState(float currentVoltage) {
-  if ( currentVoltage > blowingStartBatteryValue && !stuckState ) {
-    StartBlowing();
-    startSpinning();
+void setSpinBlowState(float currentVoltage, int localMode) {
+  if (localMode == Auto || localMode == Spiral) {
+    if ( currentVoltage > blowingStartBatteryValue && !stuckState ) {
+      StartBlowing();
+      startSpinning();
+    }
   }
-  if ( currentVoltage < blowingStopBatteryValue || stuckState ) {
-    stopBlowing();
-    stopSpinning();
-  }
+    if ( currentVoltage < blowingStopBatteryValue || stuckState ) {
+      stopBlowing();
+      stopSpinning();
+    }
   return;
 }
 
@@ -623,7 +652,7 @@ void checkBattery(float currentVoltage) {
   if (currentVoltage < lowBatteryValue) {
     Serial.print("WARNING! Low battery voltage - ");
     Serial.println(currentVoltage);
-    //stopBlowing();
+    mode=Searching;
     tone(pinBuzzer, 1700, 5);
   }
   if (currentVoltage < minBatteryValue) {
@@ -762,31 +791,23 @@ boolean isInTheRange(float parameter, float minimum, float maximum) {
 }
 
 void processMovement() {
-	
-   // Serial.print("Right bumper: ");
-   // Serial.println(isBumperPressed(pinRightBumper));
-   // Serial.print("Left bumper: ");
-   // Serial.println(isBumperPressed(pinLeftBumper));
-	
-   // Serial.print("Right sensor: ");
-   // Serial.println(isRightSideCollision());
-   // Serial.print("Left sensor: ");
-   // Serial.println(isLeftSideCollision());
-	
-  if (isLeftSideCollision()) {
-    startForceMovement(rotateRight, FullSpeed/255, turnRightTimeout);
-    Serial.println("Right side backward");
-    return;
-  }
+  checkForStuck();
+  if (!stuckState) {	
+    if (isLeftSideCollision()) {
+      startForceMovement(rotateRight, FullSpeed/255.0, turnRightTimeout);
+      Serial.println("Right side backward");
+      return;
+    }
 
-  if (isRightSideCollision()) {
-    startForceMovement(rotateLeft, FullSpeed/255, turnLeftTimeout);
-    Serial.println("Left side backward");
-    return;
-  }
+    if (isRightSideCollision()) {
+      startForceMovement(rotateLeft, FullSpeed/255.0, turnLeftTimeout);
+      Serial.println("Left side backward");
+      return;
+    }
 
-  if (!isForceMovementActive()) {
-    moveSmart(getDirection(), speedChosen / 255);
+    if (!isForceMovementActive()) {
+      moveSmart(getDirection(), speedChosen / 255.0);
+    }
   }
   return;
 }
