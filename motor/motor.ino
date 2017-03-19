@@ -63,7 +63,7 @@ const int pinLeftSonarTrig = 40;
 //sonar right
 const int pinRightSonarEcho = 52;
 const int pinRightSonarTrig = 50;
-const int distanceInCollision = 10; //cm
+const int distanceInCollision = 6; //cm
 
 const int pinLed = 13;
 //const int pinRX0 = 19;
@@ -77,8 +77,8 @@ const int pinBuzzer = 24;
 
 // Board	int.0	int.1	int.2	int.3	int.4	int.5
 // Mega2560	2		3		21		20		19		18
-const int interruptNumberIR = 4;
-const int pinIRcenter = 34; // IRheadPin 10 //corresponds the interrupt number!
+const int interruptNumberIR = 5;
+const int pinIRcenter = 19; // IRheadPin 10 //corresponds the interrupt number!
 const int pinIRleft = 32;  // IRheadPin 11
 const int pinIRright = 36;  // IRheadPin 12
 
@@ -111,7 +111,7 @@ const int lookingTimeMax=2500; //ms to turn around
 
 #define FullSpeed 255
 #define HalfSpeed 200
-#define QuarterSpeed 170
+#define QuarterSpeed 190
 #define MinSpeed 140
 
 #define rotateLeft -1
@@ -191,7 +191,7 @@ void setup() {
 
   attachInterrupt (interruptNumberLeft, encoderMonitorLeft, CHANGE);
   attachInterrupt (interruptNumberRight, encoderMonitorRight, CHANGE);
-  // attachInterrupt (interruptNumberIR, IRmonitorCenter, CHANGE);
+  attachInterrupt (interruptNumberIR, IRmonitorCenter, CHANGE);
 
   for (int index = 1; index <= encoderSmoothingAmount; index++) {
     encoderLeftArray[index] = 10;
@@ -507,7 +507,7 @@ bool isForceMovementActive() {
 }
 
 
-//incrementAtTheEnd(i);
+//|AtTheEnd(i);
 void incrementAtTheEnd(int &i) {
   if (isForceMoveLastStep) {
     i++;
@@ -516,8 +516,9 @@ void incrementAtTheEnd(int &i) {
 }
 
 
+int lookingStepCount=0;
+
 void IRsearchHandler () {
-	static int lookingStepCount=0;
   if (mode==Searching) {
     stopBlowing();
     stopSpinning();     
@@ -526,54 +527,67 @@ void IRsearchHandler () {
     if (isLeftSideCollision() || isRightSideCollision()) {
       processMovement();
     } else {
-      
-      if (isIRcenter) {
-        moveSmart(stright, FullSpeed/255.0); 
-        Serial.println("IRhead. I see it!");
-      } else {
-        if (isIRleft && !isIRright) { // I see left
-          moveSmart(rotateLeft, QuarterSpeed/255.0); 
-          Serial.println("IRhead. I see left.");
-        }
-        
-        if (isIRright && !isIRleft) { //I see right
-          moveSmart(rotateRight, QuarterSpeed/255.0); 
-          Serial.println("IRhead. I see right.");
-        }
-        
-        if (isIRright && isIRleft) { //I see right, left, but not centre
-          stopMotors();
-          Serial.println("IRhead. I see sides.");
-        }
-      }
-      if (!isIRright && !isIRleft && !isIRcenter)	{ //don't see at all
-        int timeWithoutContact=lookingStepCount*stepDurationOrder;
-        lookingStepCount++;
-        //lookingTimeMax
-        if (isInTheRange(timeWithoutContact, 1, 500)) {
-          stopMotors();
-          Serial.println("IRhead. Stopping.");
-        }
-        if (isInTheRange(timeWithoutContact, 500, 3000)) {
-          moveSmart(rotateRight, QuarterSpeed/255.0); 
-          Serial.println("IRhead. Rotating right.");
-        }
-        if (isInTheRange(timeWithoutContact, 3000, 6000)) {
-          moveSmart(rotateLeft, QuarterSpeed/255.0); 
-          Serial.println("IRhead. Rotating left.");
-        }
-        if (timeWithoutContact > 6000) {
-          processMovement();
-          //lookingStepCount=0;
-          //mode=Auto;
-          //Serial.println("IRhead. Exit.");
-        }
+      checkForStuck();
+      if (!stuckState) {	
+        runTobase();
       }
     }
   }
 return;	
 }
 
+void runTobase () {
+  if (isIRcenter) {
+    moveSmart(stright, FullSpeed/255.0); 
+    Serial.println("IRhead. I see it!");
+    if (isIRleft && !isIRright) { // Center and left
+      moveSmart(-0.4, FullSpeed/255.0); 
+    }
+    if (isIRright && !isIRleft) { // Center and right
+      moveSmart(0.4, FullSpeed/255.0); 
+    }
+  
+  } else {
+    if (isIRleft && !isIRright) { // I see left
+      moveSmart(rotateLeft, QuarterSpeed/255.0); 
+      Serial.println("IRhead. I see left.");
+    }
+    
+    if (isIRright && !isIRleft) { //I see right
+      moveSmart(rotateRight, QuarterSpeed/255.0); 
+      Serial.println("IRhead. I see right.");
+    }
+    
+    if (isIRright && isIRleft) { //I see right, left, but not centre
+      stopMotors();
+      Serial.println("IRhead. I see sides.");
+    }
+  }
+  if (!isIRright && !isIRleft && !isIRcenter)	{ //don't see at all
+    int timeWithoutContact=lookingStepCount*stepDurationOrder;
+    lookingStepCount++;
+    //lookingTimeMax
+    if (isInTheRange(timeWithoutContact, 1, 500)) {
+      stopMotors();
+      Serial.println("IRhead. Stopping.");
+    }
+    if (isInTheRange(timeWithoutContact, 500, 3000)) {
+      moveSmart(rotateRight, QuarterSpeed/255.0); 
+      Serial.println("IRhead. Rotating right.");
+    }
+    if (isInTheRange(timeWithoutContact, 3000, 6000)) {
+      moveSmart(rotateLeft, QuarterSpeed/255.0); 
+      Serial.println("IRhead. Rotating left.");
+    }
+    if (timeWithoutContact > 6000) {
+      processMovement();
+      //lookingStepCount=0;
+      //mode=Auto;
+      //Serial.println("IRhead. Exit.");
+    }
+  }
+  return;
+}
 
 void getIRstate () {
 	isIRcenter=digitalRead(pinIRcenter);
@@ -629,6 +643,8 @@ float  getBatteryVoltage() {
 
   Serial.print("Battery voltage: ");
   Serial.println(voltageAverage, 2);
+  Serial.print("Current voltage: ");
+  Serial.println(VoltageNow, 2);
 
   return voltageAverage;
 }
@@ -853,7 +869,7 @@ float checkTheDistance (int pinSonarTrig, int pinSonarEcho, char descr[ ]) {
 bool checkTheCollision (float distance, float distance_prev, char descr[ ]) {
   bool sonarFreeze=false;
   if (distance == distance_prev && distance != 0) {
-	tone(pinBuzzer, 2500, 20);
+    //tone(pinBuzzer, 2500, 20);
     Serial.print(descr);
     Serial.print(" sonar is dead. Result is ");
     Serial.println(distance);

@@ -1,6 +1,7 @@
 
 #include <IRremote.h> //An IR LED must be connected to Arduino PWM pin 3.
 #include <LiquidCrystal.h>
+#include <Servo.h>
 
   // The circuit:
  // 1* LCD RS pin to digital pin
@@ -19,29 +20,63 @@
 LiquidCrystal lcd(41, 42, 43, 44, 45, 46);
 
 const int pinLed = 13;
-//const int pinIR = 9;
- 
+const int pinConnector = 6;
 
+const int SerialBaud = 19200; //UART port speed
+
+//const int pinIR = 9;
+unsigned long connectorStartTime;
+int positionMax=180;
+int positionMin=0;
+int position=positionMin;
+
+Servo connector;
 IRsend irsend;
 
 void setup()
 {
-	lcdWelcomePrint ();
+    Serial.begin(SerialBaud);
+	//lcdWelcomePrint ();
+  connector.attach(pinConnector); delay(500);
+  connectorStartTime = millis();
+  moveConnector(positionMin);
 }
 
 void loop() {
 	digitalWrite(pinLed, HIGH);
-	irsend.sendSony(0xa90, 12);
+	//irsend.sendSony(0xa90, 12);
 	delay(30);
 	digitalWrite(pinLed, LOW);
 	delay(20);
-	
-	// for (int i = 0; i < 3; i++) {
-		// irsend.sendSony(0xa90, 12);
-	// }
-//	delay(1000); //5 second delay between each signal burst
+  
+  checkConnector();
 }
 
+
+
+void checkConnector () {
+  if (millis() - connectorStartTime >= 5000 ) {
+    if (position == positionMax) {
+      position=positionMin;
+      moveConnector(position);
+      Serial.println(position);
+    }
+  }
+  if (millis() - connectorStartTime >= 2000 ) {
+    if (position == positionMin) {
+      position=positionMax;
+      moveConnector(position);
+      Serial.println(position);
+    }
+  }
+}
+
+
+void moveConnector (int deg) {
+  connector.write(deg);
+  connectorStartTime = millis();	
+  //connector.detach();
+}
 
 
 void lcdWelcomePrint () {
