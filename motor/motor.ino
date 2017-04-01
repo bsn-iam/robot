@@ -82,6 +82,9 @@ const int pinIRcenter = 19; // IRheadPin 10 //corresponds the interrupt number!
 const int pinIRleft = 32;  // IRheadPin 11
 const int pinIRright = 36;  // IRheadPin 12
 
+const int pinBaseActivation = 46;  // ISwitch on the base bumpers
+const int pinBaseRespond = 48;  // Appears when we have 12v from base
+
 
 const int interruptNumberLeft = 3;
 const int pinEncoderLeftA = 20; //corresponds the interrupt number!
@@ -124,7 +127,8 @@ const int lookingTimeMax=2500; //ms to turn around
 #define Spiral 3
 #define Wall 4
 #define Searching 5
-int mode = Spiral;
+//int mode = Spiral;
+int mode = Searching;
 
 //enum modes { None, Joystick, Auto, Off, LowBattery};
 //modes mode=None;
@@ -163,6 +167,10 @@ void initPins() {
   pinMode(pinIRright, INPUT);
   digitalWrite(pinIRright, LOW);
 
+  pinMode(pinBaseRespond, INPUT);
+  digitalWrite(pinBaseRespond, LOW);
+  pinMode(pinBaseActivation, OUTPUT);
+  
   pinMode(pinMotorCurrent, INPUT);
   digitalWrite(pinMotorCurrent, LOW);
 
@@ -227,9 +235,7 @@ void loop() {
     processMovement();
   }
   
-  if (mode == Searching) {
-    IRsearchHandler();
-  }
+  IRsearchHandler();
   
   forceMovementHandler();
   if (stuckState) incrementAtTheEnd(stuckState);
@@ -313,6 +319,16 @@ void IRmonitorCenter () {
 	  stopMotors();
   }
   return;
+}
+
+void startBaseConnectors(){
+	digitalWrite(pinBaseActivation, HIGH);
+return;
+}
+
+bool IsConnected(){
+	var=digitalRead(pinBaseRespond);
+return var;
 }
 
 void checkForStuck() {
@@ -521,7 +537,20 @@ int lookingStepCount=0;
 void IRsearchHandler () {
   if (mode==Searching) {
     stopBlowing();
-    stopSpinning();     
+    stopSpinning(); 
+	startBaseConnectors();    
+
+	if (IsConnected()){
+		goToSleep();
+	} else {
+		processSearch();
+	}
+
+  }
+return;	
+}
+
+void processSearch(){
     if ( doIseeBase () ) lookingStepCount=0;
     
     if (isLeftSideCollision() || isRightSideCollision()) {
@@ -532,8 +561,7 @@ void IRsearchHandler () {
         runTobase();
       }
     }
-  }
-return;	
+return	
 }
 
 void runTobase () {
