@@ -327,7 +327,7 @@ return;
 }
 
 bool IsConnected(){
-	var=digitalRead(pinBaseRespond);
+	bool var=digitalRead(pinBaseRespond);
 return var;
 }
 
@@ -541,7 +541,16 @@ void IRsearchHandler () {
 	startBaseConnectors();    
 
 	if (IsConnected()){
-		goToSleep();
+		tone(pinBuzzer, 2000, 10);
+		Serial.println("Waitnig to confirm the connection.");
+		stopMotors();
+		delay(1000);
+		if (IsConnected()){
+			Serial.println("Connected to Base. Sleep.");
+			goToSleep();
+		} else {
+			tone(pinBuzzer, 1500, 10);
+		}
 	} else {
 		processSearch();
 	}
@@ -550,7 +559,7 @@ void IRsearchHandler () {
 return;	
 }
 
-void processSearch(){
+void processSearch() {
     if ( doIseeBase () ) lookingStepCount=0;
     
     if (isLeftSideCollision() || isRightSideCollision()) {
@@ -561,7 +570,7 @@ void processSearch(){
         runTobase();
       }
     }
-return	
+return;	
 }
 
 void runTobase () {
