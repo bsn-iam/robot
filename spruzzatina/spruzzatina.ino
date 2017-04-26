@@ -1,12 +1,12 @@
 
 
 const int feederAmount=5;
-const int pinValves[feederAmount] = {2, 4, 5, 7, 8}; //digital out
-const int pinOrders[feederAmount]= {1, 6, 7, 8, 9}; //analog in 
+const int pinValves[feederAmount] = {5, 7, 8, 4, 2}; //digital out
+const int pinOrders[feederAmount]= {1, 2, 3, 4, 5}; //analog in 
 
 
 const int pinManualRun = 6;  //analog in
-const int pinOrderPower = 6;  //digital OUT
+//const int pinOrderPower = 6;  //digital OUT
 const int pinConsumptionPower = 10;  //digital OUT
 const uint8_t pinConsumption = 3;  //digital in //Interrupt
 const int pinPump = 13;   //digital out
@@ -14,7 +14,7 @@ const int pinBuzzer = 11;   //digital out
 
 
 float volumes[5];
-float deadVolumeOrder=50; //mL
+float deadVolumeOrder=0.001; //
 const int SerialBaud = 19200; //UART port speed
 
 unsigned long const stepTime=1000*60*60*24;
@@ -39,7 +39,7 @@ void initPins() {
 
 	pinMode(pinManualRun, INPUT);
 	
-	pinMode(pinOrderPower, OUTPUT);
+	// pinMode(pinOrderPower, OUTPUT);
 	
 	pinMode(pinConsumptionPower, OUTPUT);
 	digitalWrite(pinConsumptionPower, LOW);
@@ -49,7 +49,6 @@ void initPins() {
 	for (int index = 0; index <= feederAmount-1; index++) {
 		pinMode(pinValves[index], OUTPUT);
 		pinMode(pinOrders[index], INPUT);
-		digitalWrite(pinOrders[index], LOW);
 	}
 return;
 }
@@ -71,7 +70,8 @@ void setup() {
     attachInterrupt(interruptNumber, IncrementFlow, RISING);           // Назначаем функцию funCountInt как обработчик прерываний interruptNumber при каждом выполнении условия RISING - переход от 0 к 1
     if(interruptNumber<0){Serial.print("Wrong Sensor number.");} 
 	
-	digitalWrite(pinOrderPower, HIGH);
+	// digitalWrite(pinOrderPower, HIGH);
+	Serial.println("Started.");
 }
 
 void loop() {
@@ -89,37 +89,39 @@ void IncrementFlow(){flowCount++;}
 
 void runFullCycle(){
 //	timer0_millis=0;
+	tone(pinBuzzer, 1900, 100);
+	Serial.println((String) "Started with time "+millis());
 	for (int index = 0; index <= feederAmount-1; index++) {
 		FeedTheLine(index);
 	}
+	Serial.println("");
 return;	
 }
 
 void checkManualRun(){
-	if (analogRead(pinManualRun)>150){
+	if (digitalRead(pinManualRun)){
 		Serial.println("Manual run started.");
+		tone(pinBuzzer, 2900, 100);
 		runFullCycle();
 	}
 return;	
 }
 
 float getOrder(int index){
-	digitalWrite(pinOrderPower, HIGH);
-	float rawVolume=analogRead(pinOrders[index])*5.0/255.0; //0-5v
-	//digitalWrite(pinOrderPower, LOW);
+	float rawVolume=analogRead(pinOrders[index])*5.0/1023.0; //0-5v
 	float orderVoltage=5-rawVolume; //
-	Serial.println((String) "Order voltage [" + orderVoltage + "].Index-"+index);
+	Serial.println((String) index +". Order voltage [" + rawVolume + "]");
 	volumes[index]=orderVoltage/5.0*maximumVolume;
 return volumes[index];	
 }
 
 float GetFlow() {
-	uint8_t  varResult = 0; 
+	float  varResult = 0; 
     if((flowTime+1000)<millis() || flowTime>millis()){           // Если c момента последнего расчёта прошла 1 секунда, или произошло переполнение millis то ...
         varResult=flowCount/7.5;                                // Рассчитываем скорость потока воды: Q = F/7,5 л/мин
         flowCount=0; flowTime=millis();                          // Сбрасываем счётчик и сохраняем время расчёта
     }                                                          // (количество импульсов от датчика flowCount равно частоте в Гц, так как расчёт происходит 1 раз в секунду)
-    if (varResult!=0) Serial.println((String) "CKOPOCTb = "+varResult+" L/MIN"); // Выводим скорость потока воды, показания которой будут меняться 1 раз в секунду
+    if (varResult!=0) Serial.println((String) "Flow speed = "+varResult+" L/min"); // Выводим скорость потока воды, показания которой будут меняться 1 раз в секунду
 
 	float flow=varResult*1000/60*1000; //mL/ms
 return flow; //mL/ms
@@ -144,7 +146,7 @@ void FeedTheLine(int index){
 	//float requestedVolume=volumes[index]; //mL
 	int requestedDuration=requestedVolume/pumpTableFlow; //ms
 
-	if (requestedVolume > deadVolumeOrder){
+	if (requestedVolume > deadVolumeOrder*maximumVolume){
 		Serial.println((String) "Feeder [" + index + "] has order ["+requestedVolume+"].");
 
 		openTheValve(index);
