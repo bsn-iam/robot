@@ -1,13 +1,12 @@
 
 
 const int feederAmount=5;
-const int pinValves[feederAmount] = {5, 7, 8, 4, 2}; //digital out
+const int pinValves[feederAmount] = {6, 7, 8, 4, 2}; //digital out
 const int pinOrders[feederAmount]= {1, 2, 3, 4, 5}; //analog in 
 
 
-const int pinManualRun = 6;  //analog in
-//const int pinOrderPower = 6;  //digital OUT
-const int pinConsumptionPower = 10;  //digital OUT
+const int pinManualRun = 9;  //analog in
+const int pinConsumptionPower = 12;  //digital OUT
 const uint8_t pinConsumption = 3;  //digital in //Interrupt
 const int pinPump = 13;   //digital out
 const int pinBuzzer = 11;   //digital out
@@ -23,9 +22,12 @@ unsigned long currentStartTime;
 unsigned long lastFinishTime=0;
 int currentDuration;
 int internalDelay=100; //ms
+int workFrequency=60*60*1000; //s
 int flowAbsentDelay=2*1000;
+volatile uint16_t flowCount  = 0;  // Определяем переменную для подсчёта количества импульсов поступивших от датчика
+         uint32_t flowTime   = 0;  // Определяем переменную для хранения времени последнего расчёта
 
-float currentFlow;
+		 float currentFlow;
 float currentVolume;
 float maximumVolume=200; //mL
 float pumpTableFlow=0.03; //mL/ms
@@ -38,27 +40,25 @@ void initPins() {
 	pinMode(pinBuzzer, OUTPUT);
 
 	pinMode(pinManualRun, INPUT);
-	
-	// pinMode(pinOrderPower, OUTPUT);
+	digitalWrite(pinManualRun, LOW);
 	
 	pinMode(pinConsumptionPower, OUTPUT);
-	digitalWrite(pinConsumptionPower, LOW);
+	//digitalWrite(pinConsumptionPower, LOW);
 
 	pinMode(pinConsumption, INPUT);
   
 	for (int index = 0; index <= feederAmount-1; index++) {
 		pinMode(pinValves[index], OUTPUT);
 		pinMode(pinOrders[index], INPUT);
+		//digitalWrite(pinOrders[index], LOW);
 	}
 return;
 }
 
-volatile uint16_t flowCount  = 0;                               // Определяем переменную для подсчёта количества импульсов поступивших от датчика
-         uint32_t flowTime   = 0;                               // Определяем переменную для хранения времени последнего расчёта
 
 void setup() {
 	initPins();
-	startTheSensor();
+	//startTheSensor();
 	getStartSound();
 	volumes[0]=0;
 	volumes[1]=0;
@@ -75,14 +75,16 @@ void setup() {
 }
 
 void loop() {
-	if (millis()-lastFinishTime > 50000){
+	if (millis()-lastFinishTime > workFrequency){
 		runFullCycle();
 		Serial.println((String) "Flow counter= [" + flowCount + "].");
 		lastFinishTime=millis();
 	} else {
 		checkManualRun();	
-		delay(500);		
+		delay(500);	
 	}
+	if (millis()<lastFinishTime)
+		lastFinishTime=millis();
 }
 
 void IncrementFlow(){flowCount++;}     
@@ -207,12 +209,14 @@ void stopThePump() {
 	digitalWrite(pinPump, LOW);
 }
 void openTheValve(int index) {
+	pinMode(pinValves[index], OUTPUT);
 	Serial.println((String) index+ "-valve opened. Pin-"+pinValves[index]);
 	digitalWrite(pinValves[index], HIGH);
 }
 
 void closeTheValve(int index) {
 	digitalWrite(pinValves[index], LOW);
+	pinMode(pinValves[index], INPUT);
 }
 
 void getStartSound() {
