@@ -16,22 +16,24 @@ float volumes[5];
 float deadVolumeOrder=0.001; //
 const int SerialBaud = 19200; //UART port speed
 
-unsigned long const stepTime=1000*60*60*24;
-
-unsigned long currentStartTime;
+unsigned long lastStepTime;
 unsigned long lastFinishTime=0;
-int currentDuration;
+unsigned long int currentDuration;
 int internalDelay=100; //ms
-int workFrequency=60*60*1000; //s
+
+unsigned long hour=3600UL*1000UL; //ms
+unsigned long workFrequency=hour*48UL; //ms
+
+
 int flowAbsentDelay=2*1000;
 volatile uint16_t flowCount  = 0;  // Определяем переменную для подсчёта количества импульсов поступивших от датчика
-         uint32_t flowTime   = 0;  // Определяем переменную для хранения времени последнего расчёта
 
-		 float currentFlow;
 float currentVolume;
-float maximumVolume=200; //mL
-float pumpTableFlow=0.03; //mL/ms
-float minPossibleFlow=0.001; //mL/ms
+float maximumVolume=100; //mL
+float pumpTableFlow=0.03/6; //mL/ms
+unsigned long lastFlowCallTime=0;
+unsigned long flowStartTime=0;
+float Kcorr=9;
 //int maximumDuration=30000; //ms till the stop
 
 void initPins() {
@@ -58,8 +60,8 @@ return;
 
 void setup() {
 	initPins();
-	//startTheSensor();
-	getStartSound();
+	StartTheSensor();
+	GetStartSound();
 	volumes[0]=0;
 	volumes[1]=0;
 	volumes[2]=0;
@@ -71,27 +73,42 @@ void setup() {
     if(interruptNumber<0){Serial.print("Wrong Sensor number.");} 
 	
 	// digitalWrite(pinOrderPower, HIGH);
+  lastFinishTime=0;
 	Serial.println("Started.");
 }
 
 void loop() {
-	if (millis()-lastFinishTime > workFrequency){
-		runFullCycle();
-		Serial.println((String) "Flow counter= [" + flowCount + "].");
-		lastFinishTime=millis();
-	} else {
-		checkManualRun();	
-		delay(500);	
-	}
-	if (millis()<lastFinishTime)
-		lastFinishTime=millis();
+	// Serial.print("Times [");
+	// Serial.print(millis()-lastFinishTime);
+	// Serial.print("]/[");
+	// Serial.print(workFrequency);
+	// Serial.print("], millis [");
+	// Serial.print(millis());
+	// Serial.println("].");
+//runFullCycle();
+	
+  if (workFrequency < 715827136){
+    if (millis()-lastFinishTime > workFrequency){
+      runFullCycle();
+      Serial.println((String) "Flow counter= [" + flowCount + "].");
+      lastFinishTime=millis();
+    } else {
+      checkManualRun();	
+      delay(500);	
+    }
+    if (millis()<lastFinishTime)
+      lastFinishTime=millis();
+  } else{
+     Serial.println((String) "Wrong division!");
+     tone(pinBuzzer, 2900, 500);
+  }
 }
 
 void IncrementFlow(){flowCount++;}     
 
 void runFullCycle(){
 //	timer0_millis=0;
-	tone(pinBuzzer, 1900, 100);
+	tone(pinBuzzer, 1900, 500);
 	Serial.println((String) "Started with time "+millis());
 	for (int index = 0; index <= feederAmount-1; index++) {
 		FeedTheLine(index);
@@ -103,7 +120,8 @@ return;
 void checkManualRun(){
 	if (digitalRead(pinManualRun)){
 		Serial.println("Manual run started.");
-		tone(pinBuzzer, 2900, 100);
+		tone(pinBuzzer, 2900, 1000);
+		delay(2000);
 		runFullCycle();
 	}
 return;	
@@ -119,15 +137,19 @@ return volumes[index];
 
 float GetFlow() {
 	float  varResult = 0; 
-    if((flowTime+1000)<millis() || flowTime>millis()){           // Если c момента последнего расчёта прошла 1 секунда, или произошло переполнение millis то ...
-        varResult=flowCount/7.5;                                // Рассчитываем скорость потока воды: Q = F/7,5 л/мин
-        flowCount=0; flowTime=millis();                          // Сбрасываем счётчик и сохраняем время расчёта
-    }                                                          // (количество импульсов от датчика flowCount равно частоте в Гц, так как расчёт происходит 1 раз в секунду)
-    if (varResult!=0) Serial.println((String) "Flow speed = "+varResult+" L/min"); // Выводим скорость потока воды, показания которой будут меняться 1 раз в секунду
+	if (lastFlowCallTime>millis()) lastFlowCallTime=millis(); 		// переполнение переменной 
+	
+	if (millis() < lastFlowCallTime+internalDelay*10) {    		// если с момента последнего запроса прошло меньше 10 шагов..
+        varResult=flowCount/7.5*(millis()-lastFlowCallTime)/1000;   // Рассчитываем скорость потока воды: Q = F/7,5 л/мин
+        flowCount=0; lastFlowCallTime=millis();             
+    }
+	//if (varResult!=0) Serial.println((String) "Flow speed = "+varResult+" L/min");
 
-	float flow=varResult*1000/60*1000; //mL/ms
+	float flow=varResult/60*Kcorr; //mL/ms
 return flow; //mL/ms
 }
+
+// Pulse based calculation
 
 //float GetFlow() {
 //	uint32_t varPulse; 
@@ -143,83 +165,92 @@ return flow; //mL/ms
 
 
 void FeedTheLine(int index){
-	int counter=0;
+	unsigned long counter=0;
 	float requestedVolume=getOrder(index); //mL
-	//float requestedVolume=volumes[index]; //mL
-	int requestedDuration=requestedVolume/pumpTableFlow; //ms
+	float requestedDuration=requestedVolume/pumpTableFlow; //ms
 
 	if (requestedVolume > deadVolumeOrder*maximumVolume){
 		Serial.println((String) "Feeder [" + index + "] has order ["+requestedVolume+"].");
 
-		openTheValve(index);
-		currentStartTime=millis();
-		startThePump();
-		calculateCurrents();
-		// while (currentVolume < requestedVolume && 
-		while (currentDuration < requestedDuration){
+		OpenTheValve(index);
+		StartThePump();
+
+		flowCount=0;
+		currentVolume=0;
+		lastStepTime=millis();
+		flowStartTime=millis();
+		currentDuration=millis()-flowStartTime; //ms
+		lastFlowCallTime=millis();
+
+		while (currentVolume < requestedVolume && 
+			currentDuration < requestedDuration){
+				
+			Serial.println((String) "Duration [" + currentDuration + "]/["+requestedDuration+"], volume [" + currentVolume + "]/["+requestedVolume+"].");
 			counter+=1;
 			delay(internalDelay); //ms
-			calculateCurrents();
-			//checkTheFlow(counter, currentFlow);
+			currentDuration=millis()-flowStartTime; //ms
+			currentVolume=currentVolume+GetVolumeDelta(lastStepTime);
+			CheckTheFlow(counter, requestedDuration, currentVolume, requestedVolume);
+			lastStepTime=millis();
 		}
 	
-		stopThePump();
-		closeTheValve(index);
+		StopThePump();
+		CloseTheValve(index);
 		Serial.println((String) "Pump [" + index + "] stopped with volume [" + currentVolume + "/" + requestedVolume +
 		"] and duration ["+currentDuration+ + "/" + requestedDuration +"].");
 	}
-	
 return;	
 }
 
 
-
-void checkTheFlow(int count, float flow){
+void CheckTheFlow(int count, float feedTime, float volume, float feedVolume){
 	float stepsMaxWithNoFlow=flowAbsentDelay/internalDelay;
 	if (count > stepsMaxWithNoFlow) {
-		if (flow < minPossibleFlow){
-			//stopThePump();
-			tone(pinBuzzer, 1900, 10);
+		float spentTime=count*internalDelay;
+		float expectedVolume=feedVolume*spentTime/feedTime;
+		count=0;
+		Serial.println((String) "Volume [" + volume + "], min limit ["+0.5*expectedVolume+"].");
+
+		if (volume < 0.5*expectedVolume){
+			StopThePump();
+			Serial.println((String) "Current volume  [" + volume + "], while expected ["+expectedVolume+"].");
+			tone(pinBuzzer, 1900, 3000);
 		}
 	}
-	
-	
 return;	
 }
 
-void calculateCurrents(){
-	currentFlow=GetFlow();
-	currentDuration=millis()-currentStartTime; //ms
-	currentVolume=currentFlow*currentDuration; // mL=(mL/ms) * ms
-return;	
+float GetVolumeDelta(unsigned long lastCallTime){
+	float currentVolumeDelta=GetFlow()*(millis()-lastCallTime); // mL=(mL/ms) * ms
+return currentVolumeDelta;	
 }
 
-void startTheSensor() {
+void StartTheSensor() {
 	digitalWrite(pinConsumptionPower, HIGH);
 }
 
-void stopTheSensor() {
+void StopTheSensor() {
 	digitalWrite(pinConsumptionPower, LOW);
 }
 
-void startThePump() {
+void StartThePump() {
 	digitalWrite(pinPump, HIGH);
 }
-void stopThePump() {
+void StopThePump() {
 	digitalWrite(pinPump, LOW);
 }
-void openTheValve(int index) {
+void OpenTheValve(int index) {
 	pinMode(pinValves[index], OUTPUT);
 	Serial.println((String) index+ "-valve opened. Pin-"+pinValves[index]);
 	digitalWrite(pinValves[index], HIGH);
 }
 
-void closeTheValve(int index) {
+void CloseTheValve(int index) {
 	digitalWrite(pinValves[index], LOW);
 	pinMode(pinValves[index], INPUT);
 }
 
-void getStartSound() {
+void GetStartSound() {
   const int DelaySound = 100;
   tone(pinBuzzer, 1915);  delay(DelaySound);
   tone(pinBuzzer, 1700);  delay(DelaySound);
