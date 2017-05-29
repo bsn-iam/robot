@@ -34,6 +34,7 @@ float pumpTableFlow=0.03/6; //mL/ms
 unsigned long lastFlowCallTime=0;
 unsigned long flowStartTime=0;
 float Kcorr=9;
+bool isAlarmState=false;
 //int maximumDuration=30000; //ms till the stop
 
 void initPins() {
@@ -73,35 +74,29 @@ void setup() {
     if(interruptNumber<0){Serial.print("Wrong Sensor number.");} 
 	
 	// digitalWrite(pinOrderPower, HIGH);
-  lastFinishTime=0;
+	lastFinishTime=0;
 	Serial.println("Started.");
 }
 
 void loop() {
-	// Serial.print("Times [");
-	// Serial.print(millis()-lastFinishTime);
-	// Serial.print("]/[");
-	// Serial.print(workFrequency);
-	// Serial.print("], millis [");
-	// Serial.print(millis());
-	// Serial.println("].");
-//runFullCycle();
+	if (workFrequency < 715827136){
+		if (millis()-lastFinishTime > workFrequency){
+			runFullCycle();
+			Serial.println((String) "Flow counter= [" + flowCount + "].");
+			lastFinishTime=millis();
+		} else {
+			checkManualRun();	
+			delay(500);	
+		}
+		if (millis()<lastFinishTime) {
+			lastFinishTime=millis();
+		}
+	} else {
+		Serial.println((String) "Wrong division!");
+		tone(pinBuzzer, 2900, 500);
+	}
 	
-  if (workFrequency < 715827136){
-    if (millis()-lastFinishTime > workFrequency){
-      runFullCycle();
-      Serial.println((String) "Flow counter= [" + flowCount + "].");
-      lastFinishTime=millis();
-    } else {
-      checkManualRun();	
-      delay(500);	
-    }
-    if (millis()<lastFinishTime)
-      lastFinishTime=millis();
-  } else{
-     Serial.println((String) "Wrong division!");
-     tone(pinBuzzer, 2900, 500);
-  }
+	if (isAlarmState) tone(pinBuzzer, 2900, 20);
 }
 
 void IncrementFlow(){flowCount++;}     
@@ -213,8 +208,11 @@ void CheckTheFlow(int count, float feedTime, float volume, float feedVolume){
 
 		if (volume < 0.5*expectedVolume){
 			StopThePump();
+			isAlarmState=true;
 			Serial.println((String) "Current volume  [" + volume + "], while expected ["+expectedVolume+"].");
-			tone(pinBuzzer, 1900, 3000);
+			tone(pinBuzzer, 1400, 1000);
+		} else {
+			isAlarmState=false;
 		}
 	}
 return;	
