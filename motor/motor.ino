@@ -128,7 +128,7 @@ const int lookingTimeMax=2500; //ms to turn around
 #define Wall 4
 #define Searching 5
 //int mode = Spiral;
-int mode = Searching;
+int mode = Spiral;
 
 //enum modes { None, Joystick, Auto, Off, LowBattery};
 //modes mode=None;
@@ -705,7 +705,7 @@ void checkBattery(float currentVoltage) {
   if (currentVoltage < lowBatteryValue) {
     Serial.print("WARNING! Low battery voltage - ");
     Serial.println(currentVoltage);
-    mode=Searching;
+//    mode=Searching;
     tone(pinBuzzer, 1700, 5);
   }
   if (currentVoltage < minBatteryValue) {
