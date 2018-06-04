@@ -7,6 +7,11 @@
 #define I2C_ADDRESS 0x3C
 SSD1306AsciiWire oled;
 
+//Required libraries:
+//	Adafruit SSD1306
+//	Adafruit Unified Sensor
+//	DHT sensor library
+
 // CO2 sensor:
 SoftwareSerial SensorSerial(8,9); // RX,TX
 byte cmdRead[9] = {0xFF,0x01,0x86,0x00,0x00,0x00,0x00,0x00,0x79}; 
@@ -42,7 +47,9 @@ unsigned long th, tl, ppm = 0, ppm2 = 0, ppm3 = 0;
 #include <DHT.h>
 #include <DHT_U.h>
 const int pinDHT = 14;
+const int pinLED = 17;
 const int pinDHTpwm = 10;
+
 DHT dht(pinDHT, DHT22);
 const int stepTime = 10; //sec
 int time = 0;
@@ -55,6 +62,8 @@ void setup() {
     
   delay (500);
   pinMode(pinDHTpwm, INPUT);
+  
+  pinMode(pinLED, OUTPUT); 
 
 
   // OLED
@@ -78,9 +87,12 @@ long t = 0;
 void loop() 
 {
 	//mh-z19b
+	TXLED1;
+	digitalWrite(pinLED, HIGH);
 	String CRCmessage = GetCOdata();
-
-	GetPpmPwm();
+	digitalWrite(pinLED, LOW);
+	TXLED0;
+	//GetPpmPwm();
 
 	//DHT
 	String DHTmessage = GetDHTdata();
@@ -133,7 +145,7 @@ String GetCOdata(){
     //Serial.print(String(t)); Serial.print(","); Serial.print(ppm); Serial.println(";");
 	
 	unsigned long temp = response[4] - 40;
-	Serial.println("CO temp: " + String(temp) + " deg");
+	Serial.println("CO2 temp: " + String(temp) + " deg");
 	
     if (ppm <= 300 || ppm > 4900) {
       message = "CO2: " + String(ppm) + "(wrong)";
