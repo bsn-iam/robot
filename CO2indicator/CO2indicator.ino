@@ -20,6 +20,7 @@ byte cmdRange5000[9] = {0xFF,0x01,0x99,0x00,0x00,0x00,0x13,0x88,0xCB};
 byte cmdAbcOn[9] = {0xFF,0x01,0x79,0xA0,0x00,0x00,0x00,0x00,0xE6}; 
 byte cmdAbcOff[9] = {0xFF,0x01,0x79,0x00,0x00,0x00,0x00,0x00,0x86}; 
 byte cmdReset[9] = {0xFF,0x01,0x8d,0x00,0x00,0x00,0x00,0x00,0x72}; 
+byte cmdZeroPoint[9] = {0xFF,0x01,0x87,0x00,0x00,0x00,0x00,0x00,0x78}; 
 
 // "\xFF\x01\x87\x00\x00\x00\x00\x00\x78"); ZERO POINT CALIBRATION
 // "\xFF\x01\x79\x00\x00\x00\x00\x00\x86"); ABC logic off
@@ -41,14 +42,17 @@ byte cmdReset[9] = {0xFF,0x01,0x8d,0x00,0x00,0x00,0x00,0x00,0x72};
 // mhzCmdMeasurementRange5000[] = {0xFF,0x01,0x99,0x00,0x00,0x00,0x13,0x88,0xCB};
 unsigned char response[9];
 
-unsigned long th, tl, ppm = 0, ppm2 = 0, ppm3 = 0;
+unsigned long th, tl, ppm = 0, ppm2 = 0, ppm3 = 0, COTemp=0;
 
 //DHT22 sensor
 #include <DHT.h>
 #include <DHT_U.h>
-const int pinDHT = 14;
-const int pinLED = 17;
-const int pinDHTpwm = 10;
+const int pinDHT = 4;
+const int pinLED = 13;
+const int pinLEDredPos = 10;
+const int pinLEDredNeg = 12;
+const int pinMHXZ19Bpwm = 11;
+const int pinResetBtn = 1;
 
 DHT dht(pinDHT, DHT22);
 const int stepTime = 10; //sec
@@ -61,10 +65,17 @@ void setup() {
   SensorSerial.begin(9600);
     
   delay (500);
-  pinMode(pinDHTpwm, INPUT);
+  pinMode(pinMHXZ19Bpwm, INPUT);
+  pinMode(pinResetBtn, INPUT);
   
   pinMode(pinLED, OUTPUT); 
 
+  pinMode(pinLEDredNeg, OUTPUT); 
+  digitalWrite(pinLEDredNeg, LOW);
+  pinMode(pinLEDredPos, OUTPUT); 
+  
+  digitalWrite(pinDHT, HIGH);
+  
 
   // OLED
   Wire.begin();         
@@ -74,8 +85,8 @@ void setup() {
   delay (100);
   oled.clear();  
   oled.println("Initializing...");
-  delay (5000);
-  
+  delay (10000);
+  oled.println("Verification...");
 
   //DHT
 
@@ -87,12 +98,21 @@ long t = 0;
 void loop() 
 {
 	//mh-z19b
-	TXLED1;
+	//TXLED1;
+	
+	Serial.println("TimeStep: " + String(t));
 	digitalWrite(pinLED, HIGH);
-	String CRCmessage = GetCOdata();
-	digitalWrite(pinLED, LOW);
-	TXLED0;
-	//GetPpmPwm();
+	digitalWrite(pinLEDredPos, HIGH);
+	
+	String CRCmessage="CO: Start";
+	
+	int toCalibrate = analogRead(pinResetBtn);
+	if (toCalibrate > 500){
+		MHZ19ZeroPoint();
+		CRCmessage="Calibrating..";
+	} else {
+		CRCmessage = GetCOdata();
+	}
 
 	//DHT
 	String DHTmessage = GetDHTdata();
@@ -103,15 +123,25 @@ void loop()
 	
 	Serial.print(CRCmessage);
 	Serial.print(DHTmessage);
+
+	digitalWrite(pinLED, LOW);
+	digitalWrite(pinLEDredPos, LOW);
 	
-	delay(1000 * stepTime);
-	t += stepTime;
-	
-	//if (t == 30){
-	//	MHZ19Reset();
+	makeDelay();
+
+	//if (t == 300){
+	//	MHZ19ZeroPoint();
+	//	AbcOff();
 	//	delay(1000 * stepTime);
 	//	t += stepTime;
 	//}
+	Serial.println(" ");
+	Serial.println(" ");
+}
+
+void makeDelay(){
+	delay(1000 * stepTime);
+	t += stepTime;
 }
 
 String GetCOdata(){
@@ -134,21 +164,30 @@ String GetCOdata(){
 	crc++;
 	
   if ( !(response[0] == 0xFF && response[1] == 0x86 && response[8] == crc) ) {
-    Serial.println("CRC error: " + String(crc) + " / "+ String(response[8]));
-    //message = "Sensor CRC error";
-    message = "No power...";
-  } else {
+		Serial.println("CRC error: " + String(crc) + " / "+ String(response[8]));
+		//message = "Sensor CRC error";
+		message = "CO2:No power...";
+		
+		while (SensorSerial.available())
+			SensorSerial.read();       
+
+		return message;
+	}
     unsigned int responseHigh = (unsigned int) response[2];
     unsigned int responseLow = (unsigned int) response[3];
     unsigned int ppm = (256 * responseHigh) + responseLow;
-	//ppm = 0.4 * ppm; // https://mysku.ru/blog/aliexpress/59397.html 
-    //Serial.print(String(t)); Serial.print(","); Serial.print(ppm); Serial.println(";");
+
+	if ( ppm <= 410 ){
+		message = "CO2:Heating...";
+		Serial.println("CO2: (Heating) " + String(ppm));
+		return message;
+	}
 	
-	unsigned long temp = response[4] - 40;
-	Serial.println("CO2 temp: " + String(temp) + " deg");
+	COTemp = response[4] - 40 - 2;
+	Serial.println("CO2 temp: " + String(COTemp) + " deg");
 	
     if (ppm <= 300 || ppm > 4900) {
-      message = "CO2: " + String(ppm) + "(wrong)";
+      message = "CO2: " + String(ppm) + "(panic)";
     } else {
       message = "CO2:" + String(ppm); 
       if (ppm < 450) {   
@@ -167,7 +206,7 @@ String GetCOdata(){
         message += "(alarm)";
       }
     }
-  }
+	
 	return message;
 }
 
@@ -179,6 +218,7 @@ String GetDHTdata(){
 	if (isnan(h) || isnan(t)) {
 		message = "Wrong DHT data";
 	} else {
+		if (t==0) t=COTemp;
 		message = "H: "+String(h)+"%  "+"T:"+String(t)+" C ";
 	}
 	return message;
@@ -186,16 +226,16 @@ String GetDHTdata(){
 
 void GetPpmPwm(){
     do {
-    th = pulseIn(pinDHTpwm, HIGH, 1004000) / 1000;
+    th = pulseIn(pinMHXZ19Bpwm, HIGH, 1004000) / 1000;
     tl = 1004 - th;
-    ppm2 =  2000 * (th-2)/(th+tl-4); // расчёт для диапазона от 0 до 2000ppm 
+    //ppm2 =  2000 * (th-2)/(th+tl-4); // расчёт для диапазона от 0 до 2000ppm 
     ppm3 =  5000 * (th-2)/(th+tl-4); // расчёт для диапазона от 0 до 5000ppm 
 	} while (th == 0);
 
-  Serial.print(th);
-  Serial.println(" <- Milliseconds PWM is HIGH");
-  Serial.print(ppm2);
-  Serial.println(" <- ppm2 (PWM) with 2000ppm as limit");
+  //Serial.print(th);
+  //Serial.println(" <- Milliseconds PWM is HIGH");
+  //Serial.print(ppm2);
+  //Serial.println(" <- ppm2 (PWM) with 2000ppm as limit");
   Serial.print(ppm3);
   Serial.println(" <- ppm3 (PWM) with 5000ppm as limit");
 }
@@ -217,6 +257,11 @@ void MHZ19Reset(){
 	Serial.println("Response is " +String(r[0])+"-"+String(r[1])+"-"+String(r[2])+"-"+String(r[3])+"-"+String(r[4])+"-"+String(r[5])+"-"+String(r[6])+"-"+String(r[7])+"-"+String(r[8]));
 }
 
+void MHZ19ZeroPoint(){
+	unsigned char r[9];
+	Serial.println("MHZ19ZeroPoint command... ");
+	SensorSerial.write(cmdZeroPoint, 9);
+}
 void AbcOn(){
 	unsigned char r[9];
 	Serial.println("ABC on command... ");
