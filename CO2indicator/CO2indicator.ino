@@ -47,7 +47,7 @@ unsigned long th, tl, ppm = 0, ppm2 = 0, ppm3 = 0, COTemp=0;
 //DHT22 sensor
 #include <DHT.h>
 #include <DHT_U.h>
-const int pinDHT = 4;
+const int pinDHT = 5;
 const int pinLED = 13;
 const int pinLEDredPos = 10;
 const int pinLEDredNeg = 12;
