@@ -101,12 +101,14 @@ void loop()
 	//TXLED1;
 	
 	Serial.println("TimeStep: " + String(t));
+	
 	digitalWrite(pinLED, HIGH);
 	digitalWrite(pinLEDredPos, HIGH);
 	
 	String CRCmessage="CO: Start";
 	
 	int toCalibrate = analogRead(pinResetBtn);
+	//int toCalibrate = 0;
 	if (toCalibrate > 500){
 		MHZ19ZeroPoint();
 		CRCmessage="Calibrating..";
@@ -121,8 +123,8 @@ void loop()
 	oled.println(CRCmessage);
 	oled.println(DHTmessage);
 	
-	Serial.print(CRCmessage);
-	Serial.print(DHTmessage);
+	Serial.println(CRCmessage);
+	Serial.println(DHTmessage);
 
 	digitalWrite(pinLED, LOW);
 	digitalWrite(pinLEDredPos, LOW);
@@ -177,7 +179,7 @@ String GetCOdata(){
     unsigned int responseLow = (unsigned int) response[3];
     unsigned int ppm = (256 * responseHigh) + responseLow;
 
-	if ( ppm <= 410 ){
+	if ( ppm = 410 ){
 		message = "CO2:Heating...";
 		Serial.println("CO2: (Heating) " + String(ppm));
 		return message;
@@ -218,7 +220,6 @@ String GetDHTdata(){
 	if (isnan(h) || isnan(t)) {
 		message = "Wrong DHT data";
 	} else {
-		if (t==0) t=COTemp;
 		message = "H: "+String(h)+"%  "+"T:"+String(t)+" C ";
 	}
 	return message;
