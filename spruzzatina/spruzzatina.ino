@@ -5,6 +5,7 @@ const int pinValves[feederAmount] = {6, 7, 8, 4, 2}; //digital out
 const int pinOrders[feederAmount]= {1, 2, 3, 4, 5}; //analog in 
 
 
+const int pinChoosePeriod = 6;  //analog in
 const int pinManualRun = 9;  //analog in
 const int pinConsumptionPower = 12;  //digital OUT
 const uint8_t pinConsumption = 3;  //digital in //Interrupt
@@ -22,7 +23,8 @@ unsigned long int currentDuration;
 int internalDelay=100; //ms
 
 unsigned long hour=3600UL*1000UL; //ms
-unsigned long workFrequency=hour*48UL; //ms
+unsigned long day=hour*24UL; //ms
+unsigned long maxPeriod=day*3UL; //ms
 
 
 int flowAbsentDelay=2*1000;
@@ -41,6 +43,9 @@ void initPins() {
 	Serial.begin(SerialBaud);
 	pinMode(pinPump, OUTPUT);
 	pinMode(pinBuzzer, OUTPUT);
+
+	pinMode(pinChoosePeriod, INPUT);
+	digitalWrite(pinChoosePeriod, LOW);
 
 	pinMode(pinManualRun, INPUT);
 	digitalWrite(pinManualRun, LOW);
@@ -79,8 +84,9 @@ void setup() {
 }
 
 void loop() {
-	if (workFrequency < 715827136){
-		if (millis()-lastFinishTime > workFrequency){
+	float workPeriod = getWorkPeriod();
+	if (workPeriod < 715827136){
+		if (millis()-lastFinishTime > workPeriod){
 			runFullCycle();
 			Serial.println((String) "Flow counter= [" + flowCount + "].");
 			lastFinishTime=millis();
@@ -130,6 +136,14 @@ float getOrder(int index){
 return volumes[index];	
 }
 
+float getWorkPeriod() {
+	float rawVolume=analogRead(pinChoosePeriod) * 5.0 / 1023.0; //0-5v
+	float periodVoltage=5-rawVolume;
+	Serial.println((String) index +". WorkPeriod [" + rawVolume + "]");
+	float result = periodVoltage / 5.0 * maxPeriod;
+	return result;	
+}
+
 float GetFlow() {
 	float  varResult = 0; 
 	if (lastFlowCallTime>millis()) lastFlowCallTime=millis(); 		// переполнение переменной 
@@ -163,6 +177,7 @@ void FeedTheLine(int index){
 	unsigned long counter=0;
 	float requestedVolume=getOrder(index); //mL
 	float requestedDuration=requestedVolume/pumpTableFlow; //ms
+	flo
 
 	if (requestedVolume > deadVolumeOrder*maximumVolume){
 		Serial.println((String) "Feeder [" + index + "] has order ["+requestedVolume+"].");
