@@ -31,7 +31,7 @@ int flowAbsentDelay=2*1000;
 volatile uint16_t flowCount  = 0;  // Определяем переменную для подсчёта количества импульсов поступивших от датчика
 
 float currentVolume;
-float maximumVolume=100; //mL
+float maximumVolume=200; //mL
 float pumpTableFlow=0.03/6; //mL/ms
 unsigned long lastFlowCallTime=0;
 unsigned long flowStartTime=0;
@@ -85,6 +85,7 @@ void setup() {
 
 void loop() {
 	float workPeriod = getWorkPeriod();
+
 	if (workPeriod < 715827136){
 		if (millis()-lastFinishTime > workPeriod){
 			runFullCycle();
@@ -131,16 +132,21 @@ return;
 float getOrder(int index){
 	float rawVolume=analogRead(pinOrders[index])*5.0/1023.0; //0-5v
 	float orderVoltage=5-rawVolume; //
-	Serial.println((String) index +". Order voltage [" + rawVolume + "]");
-	volumes[index]=orderVoltage/5.0*maximumVolume;
-return volumes[index];	
+// 	Serial.println((String) index +". Order voltage [" + rawVolume + "]");
+	float resultVolume = orderVoltage / 5.0  *maximumVolume;
+	volumes[index]=resultVolume;
+	Serial.println((String) index +". Order volume [" + resultVolume + "]");
+return volumes[index];
 }
 
 float getWorkPeriod() {
 	float rawVolume=analogRead(pinChoosePeriod) * 5.0 / 1023.0; //0-5v
 	float periodVoltage=5-rawVolume;
-	Serial.println((String) index +". WorkPeriod [" + rawVolume + "]");
+// 	Serial.println((String) "WorkPeriod [" + rawVolume + "]");
 	float result = periodVoltage / 5.0 * maxPeriod;
+	if (result / day < 0.5)
+	    result = 0.5 * day;
+// 	Serial.println((String) "Period in days [" + result/day + "]");
 	return result;	
 }
 
@@ -177,7 +183,6 @@ void FeedTheLine(int index){
 	unsigned long counter=0;
 	float requestedVolume=getOrder(index); //mL
 	float requestedDuration=requestedVolume/pumpTableFlow; //ms
-	flo
 
 	if (requestedVolume > deadVolumeOrder*maximumVolume){
 		Serial.println((String) "Feeder [" + index + "] has order ["+requestedVolume+"].");
