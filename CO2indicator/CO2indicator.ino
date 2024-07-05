@@ -56,7 +56,8 @@ const int pinResetBtn = 1;
 
 DHT dht(pinDHT, DHT22);
 const int stepTime = 10; //sec
-int time = 0;
+int toCalibrateCounter = 0;
+
 
 void setup() {
   // Serial
@@ -93,29 +94,38 @@ void setup() {
   dht.begin();
 }
 
-long t = 0;
+long int time = 0;
 
 void loop() 
 {
 	//mh-z19b
 	//TXLED1;
 	
-	Serial.println("TimeStep: " + String(t));
+	Serial.println("TimeStep: " + String(time));
 	
 	digitalWrite(pinLED, HIGH);
 	digitalWrite(pinLEDredPos, HIGH);
 	
 	String CRCmessage="CO: Start";
 	
-	int toCalibrate = analogRead(pinResetBtn);
-	//int toCalibrate = 0;
-	if (toCalibrate > 500){
+	int toCalibrateButton = analogRead(pinResetBtn);
+	if (toCalibrateButton > 500){
 		MHZ19ZeroPoint();
 		CRCmessage="Calibrating..";
 	} else {
 		CRCmessage = GetCOdata();
-	}
+		
+		if (ppm < 380)
+			toCalibrateCounter++;
+		else
+			toCalibrateCounter = 0;
 
+		if (toCalibrateCounter == 100 && time > 20 * 60){
+			MHZ19ZeroPoint();
+			CRCmessage="Calibrating..";
+		}
+	}
+	
 	//DHT
 	String DHTmessage = GetDHTdata();
 	
@@ -126,7 +136,7 @@ void loop()
 	Serial.println(CRCmessage);
 	Serial.println(DHTmessage);
 
-	digitalWrite(pinLED, LOW);
+//	digitalWrite(pinLED, LOW);
 	digitalWrite(pinLEDredPos, LOW);
 	
 	makeDelay();
@@ -143,7 +153,7 @@ void loop()
 
 void makeDelay(){
 	delay(1000 * stepTime);
-	t += stepTime;
+	time += stepTime;
 }
 
 String GetCOdata(){
@@ -217,8 +227,8 @@ String GetDHTdata(){
 	int h = dht.readHumidity();
 	int t = dht.readTemperature();
 	String message = "";
-	if (isnan(h) || isnan(t)) {
-		message = "Wrong DHT data";
+	if (isnan(h) || isnan(t) || t == 0 || h == 0 ) {
+		message = "No DHT data";
 	} else {
 		message = "H: "+String(h)+"%  "+"T:"+String(t)+" C ";
 	}
@@ -270,6 +280,3 @@ void AbcOn(){
 	memset(r, 0, 9);
 	Serial.println("Response is " +String(r[0])+"-"+String(r[1])+"-"+String(r[2])+"-"+String(r[3])+"-"+String(r[4])+"-"+String(r[5])+"-"+String(r[6])+"-"+String(r[7])+"-"+String(r[8]));
 }
-
-
-
